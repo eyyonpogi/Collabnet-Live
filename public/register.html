@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Registration - CollabNet</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+    <!-- Bootstrap 5 CSS & Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- Custom Theme CSS -->
+    <link href="/assets/css/collabnet-theme.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+<div class="landing-container">
+    <div class="hero-header text-center">
+        <h1 class="brand-title mb-1">Collab<span class="brand-accent">Net</span></h1>
+        <p class="brand-subtitle mb-0">Vinzons LGU & OLLCF Portal</p>
+    </div>
+
+    <div class="login-card-wrapper">
+        <div class="login-card" style="max-width: 480px;">
+            <h4 class="text-center fw-bold text-dark mb-1">Create Account</h4>
+            <p class="text-center text-muted small mb-4">Student Portal Registration</p>
+
+            <div id="errorAlert" class="alert alert-danger py-2 small mb-3 text-center d-none align-items-center justify-content-center gap-2">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <span id="errorMessage"></span>
+            </div>
+
+            <!-- Inside public/register.html form section -->
+<form id="registerForm">
+  <div class="mb-3">
+    <label for="full_name" class="form-label fw-semibold">Full Name</label>
+    <input type="text" id="full_name" class="form-control" placeholder="Juan Dela Cruz" required>
+  </div>
+
+  <div class="mb-3">
+    <label for="student_id" class="form-label fw-semibold">Student ID</label>
+    <input type="text" id="student_id" class="form-control" placeholder="2026-00001" required>
+  </div>
+
+  <div class="mb-3">
+    <label for="email" class="form-label fw-semibold">Email Address</label>
+    <input type="email" id="email" class="form-control" placeholder="student@ollcf.edu.ph" required>
+  </div>
+
+  <div class="mb-3">
+    <label for="course" class="form-label fw-semibold">Academic Program (Course)</label>
+    <select id="course" class="form-select" required>
+      <option value="" selected disabled>-- Select Your OLLCF Program --</option>
+      <optgroup label="College of Computer Studies">
+        <option value="BSIT">BSIT - BS Information Technology</option>
+        <option value="BSCS">BSCS - BS Computer Science</option>
+      </optgroup>
+      <optgroup label="College of Business Administration">
+        <option value="BSBA">BSBA - BS Business Administration</option>
+      </optgroup>
+      <optgroup label="College of Teacher Education">
+        <option value="BEEd">BEEd - Bachelor in Elementary Education</option>
+        <option value="BSEd">BSEd - Bachelor in Secondary Education</option>
+      </optgroup>
+      <optgroup label="College of Criminal Justice Education">
+        <option value="BSCrim">BSCrim - BS Criminology</option>
+      </optgroup>
+      <optgroup label="College of Hospitality Management">
+        <option value="BSHM">BSHM - BS Hospitality Management</option>
+      </optgroup>
+      <optgroup label="College of Maritime Education">
+        <option value="BSMT">BSMT - BS Marine Transportation</option>
+        <option value="BSMarE">BSMarE - BS Marine Engineering</option>
+      </optgroup>
+      <optgroup label="College of Nursing and Midwifery">
+        <option value="BSN">BSN - BS Nursing</option>
+        <option value="Midwifery">Midwifery - 2-year Diploma Program</option>
+      </optgroup>
+      <optgroup label="College of Medical Technology">
+        <option value="BS MedTech">BS MedTech - BS Medical Technology</option>
+      </optgroup>
+      <optgroup label="College of Psychology">
+        <option value="BSPsych">BSPsych - BS Psychology</option>
+      </optgroup>
+      <optgroup label="College of Law">
+        <option value="Juris Doctor">Juris Doctor (JD)</option>
+      </optgroup>
+    </select>
+  </div>
+
+  <div class="mb-3">
+    <label for="password" class="form-label fw-semibold">Password</label>
+    <input type="password" id="password" class="form-control" required>
+  </div>
+
+  <div class="mb-3">
+    <label for="confirm_password" class="form-label fw-semibold">Confirm Password</label>
+    <input type="password" id="confirm_password" class="form-control" required>
+  </div>
+
+  <button type="submit" class="btn btn-primary w-100 fw-bold">Register Account</button>
+</form>
+
+<script>
+document.getElementById('registerForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  
+  const full_name = document.getElementById('full_name').value.trim();
+  const student_id = document.getElementById('student_id').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const course = document.getElementById('course').value;
+  const password = document.getElementById('password').value;
+  const confirm_password = document.getElementById('confirm_password').value;
+
+  if (password !== confirm_password) {
+    alert('Passwords do not match!');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ full_name, student_id, email, course, password })
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      alert(data.message || 'Registration submitted! Awaiting verification.');
+      window.location.href = '/index.html';
+    } else {
+      alert(data.error || 'Registration failed.');
+    }
+  } catch (err) {
+    console.error('Registration error:', err);
+  }
+});
+</script>
+</body>
+</html>

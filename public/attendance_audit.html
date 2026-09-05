@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CollabNet Portal - Attendance & Certificates</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+    <!-- Bootstrap 5 CSS & Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- Custom Theme CSS -->
+    <link href="/assets/css/collabnet-theme.css" rel="stylesheet">
+</head>
+<body>
+
+<div class="cn-wrapper">
+    <!-- Sidebar Navigation -->
+    <aside class="cn-sidebar">
+        <div class="cn-sidebar-brand d-flex align-items-center gap-2">
+            <i class="bi bi-diagram-3-fill text-primary"></i>
+            <span>CollabNet</span>
+        </div>
+        
+        <div class="nav-label">MAIN</div>
+        <a href="/admin_dashboard.html" class="nav-link">
+            <i class="bi bi-speedometer2"></i> Dashboard
+        </a>
+        
+        <div class="nav-label">MANAGEMENT</div>
+        <a href="/agencies.html" class="nav-link">
+            <i class="bi bi-building"></i> Partner Agencies
+        </a>
+        <a href="/partnerships.html" class="nav-link">
+            <i class="bi bi-file-earmark-text"></i> Partnerships & MOAs
+        </a>
+        <a href="/students_verification.html" class="nav-link">
+            <i class="bi bi-person-check"></i> Student Verification
+        </a>
+        <a href="/attendance_audit.html" class="nav-link active">
+            <i class="bi bi-award"></i> Attendance & Certificates
+        </a>
+        
+        <div class="nav-label">PROGRAMS</div>
+        <a href="/activities_manage.html" class="nav-link">
+            <i class="bi bi-calendar-event"></i> Extension Activities
+        </a>
+
+        <div class="mt-auto p-3 border-top border-secondary border-opacity-25">
+            <small class="text-muted d-block" style="font-size: 0.7rem;">Logged in as:</small>
+            <div id="sidebarUser" class="fw-bold text-white text-truncate">Extension Director</div>
+            <span class="cn-badge cn-badge-success mt-1">Admin</span>
+        </div>
+    </aside>
+
+    <!-- Main Workspace -->
+    <div class="cn-main">
+        <!-- Top Navigation Header -->
+        <header class="cn-topbar">
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-diagram-3-fill fs-4 text-primary"></i>
+                <span class="fw-bold fs-5 text-dark">CollabNet Portal</span>
+            </div>
+            <div class="d-flex align-items-center gap-3">
+                <button id="logoutBtn" class="btn btn-outline-danger btn-sm fw-semibold">
+                    <i class="bi bi-box-arrow-right me-1"></i> Logout
+                </button>
+            </div>
+        </header>
+
+        <!-- Page Content -->
+        <main class="cn-content">
+            <!-- Header Title Bar -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h3 class="fw-bold mb-1 text-dark">Student Attendance & Certificate Audit</h3>
+                    <p class="text-muted small mb-0">Inspect student attendance logs, verify rendered extension hours, and issue official certificates.</p>
+                </div>
+                <span class="btn btn-primary fw-bold btn-sm px-3 py-2 shadow-sm pointer-events-none" style="cursor: default;">
+                    OLLCF Extension Office
+                </span>
+            </div>
+
+            <!-- Feedback Alert Container -->
+            <div id="alertContainer"></div>
+
+            <!-- Activity Selector Card with Auto-Load On Change -->
+            <div class="cn-card p-3 mb-4">
+                <div class="w-100">
+                    <label class="form-label-custom d-block mb-1 text-uppercase" style="font-size: 0.68rem; letter-spacing: 0.5px;">SELECT APPROVED EXTENSION ACTIVITY</label>
+                    <select id="activitySelector" class="form-select form-control-custom fw-semibold" onchange="handleSelectChange(this.value)">
+                        <option value="">Loading extension activities...</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Activity Details Banner Card -->
+            <div id="activitySummaryCard" class="cn-card p-3 mb-4 bg-light bg-opacity-50 d-none">
+                <div class="row g-3 text-center text-md-start align-items-center">
+                    <div class="col-md-5">
+                        <span class="text-muted small d-block text-uppercase fw-bold" style="font-size: 0.68rem; letter-spacing: 0.5px;">ACTIVITY TITLE</span>
+                        <strong id="actTitle" class="text-dark fs-6 d-block">--</strong>
+                        <small class="d-block text-primary fw-semibold mt-1">
+                            <i class="bi bi-building me-1"></i>Proponent: <span id="actProponent">--</span>
+                        </small>
+                    </div>
+                    <div class="col-md-2 col-6">
+                        <span class="text-muted small d-block text-uppercase fw-bold" style="font-size: 0.68rem; letter-spacing: 0.5px;">TARGET DATE</span>
+                        <strong id="actDate" class="text-dark">--</strong>
+                    </div>
+                    <div class="col-md-2 col-6">
+                        <span class="text-muted small d-block text-uppercase fw-bold" style="font-size: 0.68rem; letter-spacing: 0.5px;">TARGET HOURS</span>
+                        <strong id="actTargetHours" class="text-success fs-6">--</strong>
+                    </div>
+                    <div class="col-md-3 text-md-end">
+                        <span class="text-muted small d-block text-uppercase fw-bold mb-1" style="font-size: 0.68rem; letter-spacing: 0.5px;">VOLUNTEER SLOTS</span>
+                        <span id="actCapacity" class="badge bg-secondary px-2 py-1" style="font-size: 0.75rem;">0 Max Capacity</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Joined Student Volunteers Table Card -->
+            <div class="cn-card p-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="fw-bold text-dark mb-0 fs-6">Joined Student Volunteers</h5>
+                    <span id="participantCountBadge" class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-2 py-1">
+                        Total Participants: 0
+                    </span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0" style="font-size: 0.875rem;">
+                        <thead class="table-light text-muted small text-uppercase">
+                            <tr>
+                                <th>STUDENT DETAILS</th>
+                                <th>TIME-IN</th>
+                                <th>TIME-OUT</th>
+                                <th>CALCULATED HOURS</th>
+                                <th>STATUS</th>
+                                <th>CERTIFICATE</th>
+                                <th class="text-end">ACTION</th>
+                            </tr>
+                        </thead>
+                        <tbody id="auditTableBody">
+                            <tr><td colspan="7" class="text-center text-muted py-4">Select an extension activity above to view student logs.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+let currentActivityId = null;
+
+async function initAuditPage() {
+    try {
+        const res = await fetch('/api/admin/activities/approved');
+        if (res.status === 401 || res.status === 403) {
+            window.location.href = '/index.html';
+            return;
+        }
+
+        const data = await res.json();
+        if (!data.success) return;
+
+        const selector = document.getElementById('activitySelector');
+        if (!data.activities || data.activities.length === 0) {
+            selector.innerHTML = `<option value="">No approved extension activities available</option>`;
+            return;
+        }
+
+        selector.innerHTML = data.activities.map(act => {
+            const formattedDate = act.target_date ? new Date(act.target_date).toISOString().split('T')[0] : 'N/A';
+            return `
+                <option value="${act.activity_id}">
+                    [${formattedDate}] ${act.title} (${act.target_course || 'All Courses'} - ${act.estimated_hours || 0} hrs)
+                </option>
+            `;
+        }).join('');
+
+        // Auto load initial activity
+        if (data.activities.length > 0) {
+            currentActivityId = data.activities[0].activity_id;
+            loadAuditLogs(currentActivityId);
+        }
+    } catch (err) {
+        console.error('Failed to initialize audit page:', err);
+    }
+}
+
+function handleSelectChange(activityId) {
+    if (activityId) {
+        currentActivityId = activityId;
+        loadAuditLogs(activityId);
+    }
+}
+
+async function loadAuditLogs(activityId) {
+    if (!activityId) return;
+
+    try {
+        const res = await fetch(`/api/admin/attendance/audit/${activityId}`);
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+            showAlert('danger', data.error || 'Failed to load activity logs.');
+            return;
+        }
+
+        // Summary Banner
+        const act = data.activity;
+        const formattedDate = act.target_date ? new Date(act.target_date).toISOString().split('T')[0] : 'N/A';
+        
+        document.getElementById('actTitle').textContent = act.title;
+        document.getElementById('actProponent').textContent = act.dept_name || 'Main LGU Office';
+        document.getElementById('actDate').textContent = formattedDate;
+        document.getElementById('actTargetHours').textContent = `${act.estimated_hours || 0} Hours`;
+        document.getElementById('actCapacity').textContent = `${act.max_volunteers || 0} Max Capacity`;
+        document.getElementById('activitySummaryCard').classList.remove('d-none');
+
+        // Audit Table
+        const participants = data.participants || [];
+        document.getElementById('participantCountBadge').textContent = `Total Participants: ${participants.length}`;
+        const body = document.getElementById('auditTableBody');
+
+        if (participants.length === 0) {
+            body.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-4">No student volunteers have joined this activity yet.</td></tr>`;
+            return;
+        }
+
+        body.innerHTML = participants.map(p => {
+            const hasIn = Boolean(p.formatted_time_in);
+            const hasOut = Boolean(p.formatted_time_out);
+            const rendered = parseFloat(p.hours_rendered || 0);
+            const target = parseFloat(p.target_hours || 0);
+            const reached = p.target_reached === true || rendered >= target;
+            const isAwarded = p.certificate_issued === true || p.status === 'Completed';
+
+            const formatTime = (iso) => {
+                if (!iso) return null;
+                const d = new Date(iso);
+                return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+            };
+
+            let actionBtn = '';
+            if (isAwarded) {
+                actionBtn = `<button class="btn btn-sm btn-outline-secondary py-1 px-2 fw-semibold" style="font-size: 0.75rem;" disabled><i class="bi bi-check2-all me-1"></i> Verified</button>`;
+            } else if (hasIn && hasOut) {
+                actionBtn = `<button onclick="awardCertificate(${p.participant_id}, ${activityId})" class="btn btn-sm btn-success fw-bold py-1 px-2" style="font-size: 0.75rem;"><i class="bi bi-award me-1"></i> Award Certificate & Hours</button>`;
+            } else {
+                actionBtn = `<button class="btn btn-sm btn-secondary py-1 px-2 opacity-50 fw-semibold" style="font-size: 0.75rem;" disabled title="Student must complete Time-In and Time-Out first"><i class="bi bi-lock-fill me-1"></i> Incomplete Attendance</button>`;
+            }
+
+            return `
+                <tr>
+                    <td>
+                        <strong class="text-dark d-block">${p.full_name}</strong>
+                        <small class="text-muted">${p.email} (ID: ${p.student_id || 'N/A'})</small>
+                    </td>
+                    <td>
+                        ${hasIn ? `<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1"><i class="bi bi-clock me-1"></i>${formatTime(p.formatted_time_in)}</span>` : `<span class="text-muted small"><i class="bi bi-dash-circle me-1"></i>No Time-In</span>`}
+                    </td>
+                    <td>
+                        ${hasOut ? `<span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 px-2 py-1"><i class="bi bi-clock-history me-1"></i>${formatTime(p.formatted_time_out)}</span>` : `<span class="text-muted small"><i class="bi bi-dash-circle me-1"></i>No Time-Out</span>`}
+                    </td>
+                    <td>
+                        ${hasIn && hasOut 
+                            ? `<span class="badge ${reached ? 'bg-success' : 'bg-warning text-dark'} px-2 py-1">${rendered.toFixed(2)} / ${target.toFixed(2)} hrs</span>` 
+                            : `<span class="badge bg-success px-2 py-1">0.00 / ${target.toFixed(2)} hrs</span>`}
+                    </td>
+                    <td>
+                        <span class="badge bg-secondary bg-opacity-75 px-2 py-1" style="font-weight: 500;">${p.status || 'Registered'}</span>
+                    </td>
+                    <td>
+                        ${isAwarded 
+                            ? `<span class="text-success fw-bold small"><i class="bi bi-patch-check-fill me-1"></i>Awarded</span>` 
+                            : `<span class="text-muted small"><i class="bi bi-hourglass me-1"></i>Pending Verification</span>`}
+                    </td>
+                    <td class="text-end">${actionBtn}</td>
+                </tr>
+            `;
+        }).join('');
+
+    } catch (err) {
+        console.error('Error loading audit logs:', err);
+    }
+}
+
+async function awardCertificate(participant_id, activityId) {
+    try {
+        const res = await fetch('/api/admin/attendance/verify-certificate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ participant_id })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+            showAlert('success', data.message || 'Student participation verified! Certificate awarded.');
+            loadAuditLogs(activityId);
+        } else {
+            showAlert('danger', data.error || 'Failed to award certificate.');
+        }
+    } catch (err) {
+        console.error('Award certificate error:', err);
+    }
+}
+
+function showAlert(type, msg) {
+    document.getElementById('alertContainer').innerHTML = `
+        <div class="alert alert-${type} alert-dismissible fade show py-2 small mb-4" role="alert">
+            <i class="bi bi-check-circle-fill me-1"></i>${msg}
+            <button type="button" class="btn-close py-2" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+}
+
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+    await fetch('/api/auth/logout');
+    window.location.href = '/index.html';
+});
+
+document.addEventListener('DOMContentLoaded', initAuditPage);
+</script>
+</body>
+</html>

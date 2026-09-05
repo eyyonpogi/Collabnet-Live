@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LGU Sub-Offices & Barangays - CollabNet</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+    <!-- Bootstrap 5 CSS & Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- Custom Theme CSS -->
+    <link href="/assets/css/collabnet-theme.css" rel="stylesheet">
+</head>
+<body>
+
+<div class="cn-wrapper">
+    <!-- Sidebar Navigation -->
+    <aside class="cn-sidebar">
+        <div class="cn-sidebar-brand d-flex align-items-center gap-2">
+            <i class="bi bi-diagram-3-fill text-primary"></i>
+            <span>CollabNet</span>
+        </div>
+        
+        <div class="nav-label">MAIN</div>
+        <a href="/lgu_dashboard.html" class="nav-link">
+            <i class="bi bi-speedometer2"></i> Dashboard
+        </a>
+        
+        <div class="nav-label">MANAGEMENT</div>
+        <a href="/lgu_departments.html" class="nav-link active">
+            <i class="bi bi-diagram-3"></i> Sub-Units & Barangays
+        </a>
+        <a href="/lgu_pin_manager.html" class="nav-link">
+            <i class="bi bi-key"></i> Venue PIN Manager
+        </a>
+        <a href="/lgu_partnerships.html" class="nav-link">
+            <i class="bi bi-file-earmark-text"></i> Partnerships & MOAs
+        </a>
+        
+        <div class="nav-label">PROGRAMS</div>
+        <a href="/lgu_activities.html" class="nav-link">
+            <i class="bi bi-calendar-event"></i> Extension Activities
+        </a>
+
+        <div class="mt-auto p-3 border-top border-secondary border-opacity-25">
+            <small class="text-muted d-block" style="font-size: 0.7rem;">Logged in as:</small>
+            <div id="sidebarUser" class="fw-bold text-white text-truncate">LGU Vinzons Coordinator</div>
+            <span class="cn-badge cn-badge-success mt-1">Agency Admin</span>
+        </div>
+    </aside>
+
+    <!-- Main Workspace -->
+    <div class="cn-main">
+        <!-- Top Navigation Header -->
+        <header class="cn-topbar">
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-diagram-3-fill fs-4 text-primary"></i>
+                <span class="fw-bold fs-5 text-dark">CollabNet Portal</span>
+            </div>
+            <div class="d-flex align-items-center gap-3">
+                <button id="logoutBtn" class="btn btn-outline-danger btn-sm fw-semibold">
+                    <i class="bi bi-box-arrow-right me-1"></i> Logout
+                </button>
+            </div>
+        </header>
+
+        <!-- Page Content -->
+        <main class="cn-content">
+            <!-- Header Title & Action Bar -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h3 class="fw-bold mb-1 text-dark">LGU Vinzons Sub-Offices & Barangays</h3>
+                    <p class="text-muted small mb-0">Manage internal municipal departments, sector offices, and barangay units.</p>
+                </div>
+                <button class="btn btn-primary btn-sm fw-bold px-3 py-2 shadow-sm" data-bs-toggle="modal" data-bs-target="#addDeptModal">
+                    <i class="bi bi-plus-lg me-1"></i> Add Office / Barangay
+                </button>
+            </div>
+
+            <!-- Feedback Alert Container -->
+            <div id="alertContainer"></div>
+
+            <!-- Sub-Units & Barangays Table Card -->
+            <div class="cn-card p-3">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0" style="font-size: 0.875rem;">
+                        <thead class="table-light text-muted small text-uppercase">
+                            <tr>
+                                <th>OFFICE / BARANGAY NAME</th>
+                                <th>CATEGORY</th>
+                                <th>POINT OF CONTACT</th>
+                                <th>EMAIL ADDRESS</th>
+                            </tr>
+                        </thead>
+                        <tbody id="departmentsTableBody">
+                            <tr><td colspan="4" class="text-center text-muted py-3">Loading sub-departments...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+
+<!-- Modal: Add Department / Barangay -->
+<div class="modal fade" id="addDeptModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <form id="addDeptForm">
+                <div class="modal-header border-bottom-0 pb-0">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi bi-diagram-3 text-primary fs-4"></i>
+                        <h5 class="modal-title fw-bold text-dark">Add LGU Sub-Unit</h5>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body py-3">
+                    <div class="mb-3">
+                        <label class="form-label-custom">OFFICE / BARANGAY NAME *</label>
+                        <input type="text" id="deptName" class="form-control form-control-custom" placeholder="e.g., Rural Health Unit (RHU) or Brgy. Poblacion" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label-custom">UNIT CATEGORY</label>
+                        <select id="officeType" class="form-select form-control-custom">
+                            <option value="Department">Department</option>
+                            <option value="Barangay">Barangay</option>
+                            <option value="Office">Office</option>
+                        </select>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label-custom">CONTACT PERSON</label>
+                            <input type="text" id="contactPerson" class="form-control form-control-custom" placeholder="e.g., Dr. Maria Santos">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label-custom">CONTACT EMAIL</label>
+                            <input type="email" id="contactEmail" class="form-control form-control-custom" placeholder="rhu@vinzons.gov.ph">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-top-0 pt-0">
+                    <button type="button" class="btn btn-sm btn-secondary fw-semibold" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-sm btn-primary fw-bold px-3">Save Sub-Unit</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+async function loadDepartments() {
+    try {
+        const res = await fetch('/api/lgu/departments');
+        if (res.status === 401 || res.status === 403) {
+            window.location.href = '/index.html';
+            return;
+        }
+
+        const data = await res.json();
+        if (!data.success) return;
+
+        const body = document.getElementById('departmentsTableBody');
+        if (!data.departments || data.departments.length === 0) {
+            body.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-4">No sub-departments or barangays added yet.</td></tr>`;
+            return;
+        }
+
+        body.innerHTML = data.departments.map(d => {
+            const isBarangay = d.office_type === 'Barangay';
+            const badgeClass = isBarangay 
+                ? 'bg-info bg-opacity-10 text-info border border-info border-opacity-25' 
+                : 'bg-info bg-opacity-10 text-info border border-info border-opacity-25';
+
+            return `
+                <tr>
+                    <td class="fw-bold text-dark">${d.dept_name}</td>
+                    <td>
+                        <span class="badge ${badgeClass} px-2 py-1" style="font-weight: 500;">
+                            ${d.office_type || 'Department'}
+                        </span>
+                    </td>
+                    <td class="text-secondary">${d.contact_person || 'N/A'}</td>
+                    <td class="text-secondary">${d.contact_email || 'N/A'}</td>
+                </tr>
+            `;
+        }).join('');
+    } catch (err) {
+        console.error('Error loading departments:', err);
+    }
+}
+
+document.getElementById('addDeptForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const payload = {
+        dept_name: document.getElementById('deptName').value,
+        office_type: document.getElementById('officeType').value,
+        contact_person: document.getElementById('contactPerson').value,
+        contact_email: document.getElementById('contactEmail').value
+    };
+
+    try {
+        const res = await fetch('/api/lgu/departments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+
+        const modalEl = document.getElementById('addDeptModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        if (modal) modal.hide();
+
+        if (res.ok) {
+            showAlert('success', data.message || 'Office/Barangay added successfully!');
+            document.getElementById('addDeptForm').reset();
+            loadDepartments();
+        } else {
+            showAlert('danger', data.error || 'Failed to add office/barangay.');
+        }
+    } catch (err) {
+        console.error('Save department error:', err);
+    }
+});
+
+function showAlert(type, msg) {
+    document.getElementById('alertContainer').innerHTML = `
+        <div class="alert alert-${type} alert-dismissible fade show py-2 small mb-4" role="alert">
+            <i class="bi bi-check-circle-fill me-1"></i>${msg}
+            <button type="button" class="btn-close py-2" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+}
+
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+    await fetch('/api/auth/logout');
+    window.location.href = '/index.html';
+});
+
+document.addEventListener('DOMContentLoaded', loadDepartments);
+</script>
+</body>
+</html>

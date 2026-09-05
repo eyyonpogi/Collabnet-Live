@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Activity Attendance - CollabNet</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+    <!-- Bootstrap 5 CSS & Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- Custom Theme CSS -->
+    <link href="/assets/css/collabnet-theme.css" rel="stylesheet">
+</head>
+<body class="bg-secondary bg-opacity-10">
+
+<div class="student-mobile-frame">
+    <!-- Mobile App Header -->
+    <div class="student-mobile-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <small class="text-white-50 text-uppercase fw-semibold" style="font-size: 0.65rem;">Service Hour Logging</small>
+                <h5 class="fw-bold mb-0 text-white">Event Attendance</h5>
+            </div>
+            <button id="logoutBtn" class="btn btn-sm btn-light text-primary rounded-circle d-inline-flex align-items-center justify-content-center" style="width: 36px; height: 36px;">
+                <i class="bi bi-box-arrow-right"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="p-3">
+        <!-- Status Feedback Alerts -->
+        <div id="alertContainer"></div>
+
+        <h6 class="fw-bold mb-3 text-dark">My Registered Activities</h6>
+
+        <!-- Attendance Logs Container -->
+        <div id="logsContainer">
+            <div class="text-center text-muted py-4 student-action-card">
+                <div class="spinner-border text-primary spinner-border-sm mb-2" role="status"></div>
+                <small class="d-block">Loading attendance logs...</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Venue PIN Entry Modal -->
+    <div class="modal fade" id="pinModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm px-3">
+            <div class="modal-content border-0 shadow rounded-4">
+                <form id="pinForm">
+                    <input type="hidden" id="modalActivityId">
+                    <input type="hidden" id="modalActionType">
+                    
+                    <div class="modal-header border-bottom-0 pb-0">
+                        <h6 class="modal-title fw-bold text-dark" id="modalTitle">Enter Attendance PIN</h6>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body py-3 text-center">
+                        <p class="text-muted small mb-3" style="font-size: 0.8rem;">
+                            Enter the 4-digit venue passcode provided by the LGU coordinator.
+                        </p>
+                        <div class="mb-2">
+                            <input type="text" id="pinInput" maxlength="4" class="form-control form-control-custom text-center fw-bold fs-3 letter-spacing-2" placeholder="••••" required autofocus>
+                        </div>
+                    </div>
+                    <div class="modal-footer border-top-0 pt-0 justify-content-center">
+                        <button type="button" class="btn btn-sm btn-light fw-semibold text-muted" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-sm btn-primary fw-bold px-4">Submit PIN</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fixed Bottom App Navigation -->
+    <nav class="student-bottom-nav">
+        <a href="/student_dashboard.html" class="student-nav-item">
+            <i class="bi bi-house-door"></i>
+            <span>Home</span>
+        </a>
+        <a href="/student_activities.html" class="student-nav-item">
+            <i class="bi bi-calendar-week"></i>
+            <span>Activities</span>
+        </a>
+        <a href="/student_attendance.html" class="student-nav-item active">
+            <i class="bi bi-clock-fill"></i>
+            <span>Attendance</span>
+        </a>
+        <a href="/student_profile.html" class="student-nav-item">
+            <i class="bi bi-person"></i>
+            <span>Profile</span>
+        </a>
+    </nav>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+async function loadLogs() {
+    try {
+        const res = await fetch('/api/student/attendance/logs');
+        if (res.status === 401) {
+            window.location.href = '/index.html';
+            return;
+        }
+
+        const data = await res.json();
+        if (!data.success) return;
+
+        renderLogs(data.logs);
+    } catch (err) {
+        console.error('Failed to load logs:', err);
+    }
+}
+
+function renderLogs(logs) {
+    const container = document.getElementById('logsContainer');
+    if (!logs || logs.length === 0) {
+        container.innerHTML = `
+            <div class="text-center text-muted py-4 student-action-card">
+                <i class="bi bi-calendar-x display-6 text-muted mb-2 d-block"></i>
+                <small>You haven't registered for any extension activities yet.</small>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = logs.map(row => {
+        const hasTimeIn = Boolean(row.formatted_time_in);
+        const hasTimeOut = Boolean(row.formatted_time_out);
+        const rendered = parseFloat(row.hours_rendered || 0);
+        const target = parseFloat(row.estimated_hours || 0);
+        const targetReached = row.target_reached === true || rendered >= target;
+        const isCompleted = row.participant_status === 'Completed' || row.certificate_issued === true;
+
+        let statusBadge = `<span class="badge bg-light text-secondary border"><i class="bi bi-circle me-1"></i>Not Logged</span>`;
+        if (isCompleted) {
+            statusBadge = `<span class="cn-badge cn-badge-success"><i class="bi bi-patch-check-fill me-1"></i>Verified</span>`;
+        } else if (hasTimeIn && hasTimeOut) {
+            statusBadge = `
+                <span class="badge ${targetReached ? 'bg-success' : 'bg-warning text-dark'}">
+                    <i class="bi ${targetReached ? 'bi-check-all' : 'bi-hourglass-split'} me-1"></i>
+                    ${rendered.toFixed(2)} / ${target.toFixed(2)} hrs
+                </span>
+            `;
+        }
+
+        let actionButton = '';
+        if (!hasTimeIn) {
+            actionButton = `
+                <button type="button" class="btn btn-sm btn-primary fw-bold py-1 px-3" style="font-size: 0.75rem;" onclick="openPinModal(${row.activity_id}, 'time_in')">
+                    <i class="bi bi-box-arrow-in-right me-1"></i> Time In
+                </button>
+            `;
+        } else if (hasTimeIn && !hasTimeOut) {
+            actionButton = `
+                <button type="button" class="btn btn-sm btn-warning text-dark fw-bold py-1 px-3" style="font-size: 0.75rem;" onclick="openPinModal(${row.activity_id}, 'time_out')">
+                    <i class="bi bi-box-arrow-right me-1"></i> Time Out
+                </button>
+            `;
+        } else {
+            actionButton = `
+                <button type="button" class="btn btn-sm btn-light text-success border disabled fw-bold" style="font-size: 0.725rem;">
+                    <i class="bi bi-check-all me-1"></i> Logged
+                </button>
+            `;
+        }
+
+        const formatTime = (isoString) => isoString ? new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
+
+        return `
+            <div class="student-action-card mb-3">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <h6 class="fw-bold text-dark mb-1">${row.title}</h6>
+                        <small class="text-muted"><i class="bi bi-geo-alt me-1 text-danger"></i>${row.location || 'Vinzons'}</small>
+                    </div>
+                    ${statusBadge}
+                </div>
+                <div class="bg-light p-2 rounded mb-3" style="font-size: 0.75rem;">
+                    <div class="row g-2 text-center">
+                        <div class="col-6 border-end">
+                            <span class="text-muted d-block">TIME-IN</span>
+                            <strong class="text-dark">${formatTime(row.formatted_time_in)}</strong>
+                        </div>
+                        <div class="col-6">
+                            <span class="text-muted d-block">TIME-OUT</span>
+                            <strong class="text-dark">${formatTime(row.formatted_time_out)}</strong>
+                        </div>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-between align-items-center pt-2 border-top">
+                    <div class="text-muted small" style="font-size: 0.75rem;">
+                        <i class="bi bi-award text-primary me-1"></i>
+                        <strong>${hasTimeOut ? `${rendered.toFixed(2)} hrs rendered` : `${target.toFixed(2)} hrs target`}</strong>
+                    </div>
+                    <div>${actionButton}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function openPinModal(activityId, actionType) {
+    document.getElementById('modalActivityId').value = activityId;
+    document.getElementById('modalActionType').value = actionType;
+    document.getElementById('pinInput').value = '';
+    document.getElementById('modalTitle').textContent = actionType === 'time_in' ? 'Time-In PIN Passcode' : 'Time-Out PIN Passcode';
+
+    const modal = new bootstrap.Modal(document.getElementById('pinModal'));
+    modal.show();
+}
+
+document.getElementById('pinForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const activity_id = document.getElementById('modalActivityId').value;
+    const action_type = document.getElementById('modalActionType').value;
+    const pin = document.getElementById('pinInput').value;
+
+    const alertContainer = document.getElementById('alertContainer');
+
+    try {
+        const res = await fetch('/api/student/attendance/pin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ activity_id, action_type, pin })
+        });
+
+        const data = await res.json();
+
+        // Close modal
+        const modalEl = document.getElementById('pinModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        if (modal) modal.hide();
+
+        if (!res.ok) {
+            alertContainer.innerHTML = `
+                <div class="alert alert-danger py-2 small mb-3 text-center d-flex align-items-center justify-content-center gap-2 rounded-3 shadow-sm">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <div>${data.error || 'Invalid PIN code.'}</div>
+                </div>
+            `;
+            return;
+        }
+
+        alertContainer.innerHTML = `
+            <div class="alert alert-success py-2 small mb-3 text-center d-flex align-items-center justify-content-center gap-2 rounded-3 shadow-sm">
+                <i class="bi bi-check-circle-fill"></i>
+                <div>${data.message}</div>
+            </div>
+        `;
+
+        loadLogs();
+    } catch (err) {
+        console.error('PIN Submission error:', err);
+    }
+});
+
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+    await fetch('/api/auth/logout');
+    window.location.href = '/index.html';
+});
+
+document.addEventListener('DOMContentLoaded', loadLogs);
+</script>
+</body>
+</html>

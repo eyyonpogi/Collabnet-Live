@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CollabNet: A Web-Based Community Extension Service and Partnership Management System</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+    <!-- Bootstrap 5 CSS & Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- Custom Theme CSS -->
+    <link href="/assets/css/collabnet-theme.css" rel="stylesheet">
+    <style>
+        .top-hero-banner {
+            background-color: #153e8e;
+            border-radius: 0 0 2rem 2rem;
+            padding-top: 3.5rem;
+            padding-bottom: 7.5rem;
+        }
+        .overlapping-card-wrapper {
+            margin-top: -5.5rem;
+        }
+    </style>
+</head>
+<body class="bg-light">
+
+<!-- Top Hero Banner -->
+<div class="top-hero-banner text-center text-white px-3 shadow-sm">
+    <h1 class="fw-extrabold mb-1 text-white" style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 2.5rem;">
+        Collab<span style="color: #00bfff;">Net</span>
+    </h1>
+    <p class="text-white-50 small fw-semibold mb-0" style="font-size: 0.9rem;">Vinzons LGU & OLLCF Extension Portal</p>
+</div>
+
+<!-- Overlapping Portal Card -->
+<div class="container overlapping-card-wrapper mb-4">
+    <div class="row justify-content-center">
+        <div class="col-12 col-md-8 col-lg-5">
+            <div class="card border-0 shadow-lg p-4 p-md-5 bg-white" style="border-radius: 1.25rem;">
+                <h4 class="text-center fw-bold text-dark mb-1">Portal Sign In</h4>
+                <p class="text-center text-muted small mb-4">Enter your credentials to access your account</p>
+
+                <!-- Error Alert Box -->
+                <div id="errorAlert" class="alert alert-danger py-2 px-3 small mb-3 text-center d-none align-items-center justify-content-center gap-2" style="font-size: 0.8rem; border-radius: 0.5rem;">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <span id="errorMessage"></span>
+                </div>
+
+                <form id="loginForm">
+                    <div class="mb-3">
+                        <label class="form-label text-muted fw-bold text-uppercase mb-1" style="font-size: 0.68rem; letter-spacing: 0.5px;">EMAIL OR STUDENT ID</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-white border-end-0 text-muted" style="border-radius: 0.5rem 0 0 0.5rem;"><i class="bi bi-person-badge"></i></span>
+                            <input type="text" id="login_input" name="login_input" class="form-control border-start-0 ps-0" placeholder="user@ollcf.edu.ph or 2026-00123" required style="border-radius: 0 0.5rem 0.5rem 0;">
+                        </div>
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label text-muted fw-bold text-uppercase mb-1" style="font-size: 0.68rem; letter-spacing: 0.5px;">PASSWORD</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-white border-end-0 text-muted" style="border-radius: 0.5rem 0 0 0.5rem;"><i class="bi bi-lock"></i></span>
+                            <input type="password" id="password" name="password" class="form-control border-start-0 ps-0" placeholder="••••••••" required style="border-radius: 0 0.5rem 0.5rem 0;">
+                        </div>
+                    </div>
+                    <button type="submit" id="submitBtn" class="btn btn-primary w-100 fw-bold py-2 mb-3 shadow-sm" style="border-radius: 0.5rem; background-color: #0d6efd;">
+                        <i class="bi bi-box-arrow-in-right me-1"></i> Sign In
+                    </button>
+                </form>
+                <div class="text-center small text-muted pt-3 border-top">
+                    New student volunteer? <a href="/register.html" class="fw-bold text-primary text-decoration-none">Register here</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const loginInput = document.getElementById('login_input').value.trim();
+    const passwordInput = document.getElementById('password').value.trim();
+    const errorAlert = document.getElementById('errorAlert');
+    const errorMessage = document.getElementById('errorMessage');
+    const submitBtn = document.getElementById('submitBtn');
+
+    // Reset error box state
+    errorAlert.classList.add('d-none');
+    errorAlert.classList.remove('d-flex');
+
+    if (!loginInput || !passwordInput) {
+        showError('Please enter both your Email / Student ID and password.');
+        return;
+    }
+
+    try {
+       submitBtn.disabled = true;
+submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span> Authenticating...`;
+
+const res = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 
+        'Content-Type': 'application/json' 
+    },
+    body: JSON.stringify({ 
+        email: loginInput, 
+        password: passwordInput 
+    })
+});
+
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+            window.location.href = data.redirectUrl || '/student_dashboard.html';
+        } else {
+            showError(data.error || 'Login failed. Please check your credentials.');
+        }
+    } catch (err) {
+        console.error('Login request failed:', err);
+        showError('Unable to connect to the server. Please verify node server.js is running.');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = `<i class="bi bi-box-arrow-in-right me-1"></i> Sign In`;
+    }
+
+    function showError(msg) {
+        errorMessage.textContent = msg;
+        errorAlert.classList.remove('d-none');
+        errorAlert.classList.add('d-flex');
+    }
+});
+</script>
+</body>
+</html>
