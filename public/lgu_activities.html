@@ -44,6 +44,9 @@
         <a href="/lgu_activities.html" class="nav-link active">
             <i class="bi bi-calendar-event"></i> Extension Activities
         </a>
+        <a href="/lgu_logs.html" class="nav-link">
+    <i class="bi bi-clock-history"></i> Attendance Logs
+</a>
 
         <div class="mt-auto p-3 border-top border-secondary border-opacity-25">
             <small class="text-muted d-block" style="font-size: 0.7rem;">Logged in as:</small>
@@ -226,6 +229,18 @@
             </div>
           </div>
 
+          <!-- Proposal Lifespan Field -->
+          <div class="mb-3">
+            <label for="act_lifespan_days" class="form-label small fw-bold text-muted text-uppercase mb-1">PROPOSAL LIFESPAN (VALIDITY PERIOD)</label>
+            <select id="act_lifespan_days" class="form-select">
+              <option value="7">7 Days (1 Week)</option>
+              <option value="14" selected>14 Days (2 Weeks - Default)</option>
+              <option value="30">30 Days (1 Month)</option>
+              <option value="60">60 Days (2 Months)</option>
+            </select>
+            <small class="form-text text-muted">If the Extension Director does not review this proposal within this period, it will automatically expire.</small>
+          </div>
+
           <!-- Description & Objectives -->
           <div class="mb-3">
             <label for="act_description" class="form-label small fw-bold text-muted text-uppercase mb-1">DESCRIPTION & OBJECTIVES</label>
@@ -276,8 +291,7 @@
                         </div>
                     </div>
                 </div>
-                <h6 class="fw-bold text-dark mb-1">Description & Objectives:</h6>
-                <p id="modalDescription" class="text-muted small mb-0" style="line-height: 1.6;">--</p>
+                <div id="modalDescription" class="text-muted small mb-0" style="line-height: 1.6;">--</div>
             </div>
             <div class="modal-footer border-top-0 pt-0">
                 <button type="button" class="btn btn-sm btn-secondary fw-semibold" data-bs-dismiss="modal">Close</button>
@@ -364,8 +378,10 @@ function renderActivitiesTable(activities) {
             badgeHtml = `<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1">Approved</span>`;
         } else if (actStatus === 'Pending') {
             badgeHtml = `<span class="badge bg-warning bg-opacity-10 text-dark border border-warning px-2 py-1">Pending Review</span>`;
+        } else if (actStatus === 'Expired') {
+            badgeHtml = `<span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25 px-2 py-1">Expired</span>`;
         } else {
-            badgeHtml = `<span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 px-2 py-1">Rejected</span>`;
+            badgeHtml = `<span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 px-2 py-1" title="${escapeHtml(act.rejection_reason || 'No reason provided')}" style="cursor: pointer;">Rejected <i class="bi bi-info-circle-fill ms-1"></i></span>`;
         }
 
         const formattedDate = act.target_date ? new Date(act.target_date).toISOString().split('T')[0] : 'N/A';
@@ -409,7 +425,23 @@ function showDetailsModal(actId) {
     document.getElementById('modalLocation').textContent = act.location || 'Vinzons';
     document.getElementById('modalHours').textContent = `${act.estimated_hours || 0} Hours`;
     document.getElementById('modalCapacity').textContent = `${act.max_volunteers || 0} Slots`;
-    document.getElementById('modalDescription').textContent = act.description || 'No description provided.';
+
+    const descElem = document.getElementById('modalDescription');
+    if (act.status === 'Rejected' && act.rejection_reason) {
+        descElem.innerHTML = `
+            <div class="alert alert-danger py-2 px-3 mb-3 small">
+                <strong><i class="bi bi-exclamation-triangle-fill me-1"></i> Rejection Reason from Extension Office:</strong><br>
+                ${escapeHtml(act.rejection_reason)}
+            </div>
+            <h6 class="fw-bold text-dark mb-1">Description & Objectives:</h6>
+            <p class="text-muted small mb-0">${escapeHtml(act.description || 'No description provided.')}</p>
+        `;
+    } else {
+        descElem.innerHTML = `
+            <h6 class="fw-bold text-dark mb-1">Description & Objectives:</h6>
+            <p class="text-muted small mb-0">${escapeHtml(act.description || 'No description provided.')}</p>
+        `;
+    }
 
     const modal = new bootstrap.Modal(document.getElementById('detailsModal'));
     modal.show();
@@ -432,7 +464,8 @@ document.getElementById('proposeActivityForm').addEventListener('submit', async 
         target_date: rawDate,
         max_volunteers: parseInt(document.getElementById('act_max_volunteers').value, 10) || 20,
         estimated_hours: parseInt(document.getElementById('act_estimated_hours').value, 10) || 8,
-        description: document.getElementById('act_description').value.trim()
+        description: document.getElementById('act_description').value.trim(),
+        lifespan_days: parseInt(document.getElementById('act_lifespan_days').value, 10) || 14
     };
 
     try {
@@ -492,6 +525,11 @@ function showAlert(type, msg) {
             <button type="button" class="btn-close py-2" data-bs-dismiss="alert"></button>
         </div>
     `;
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
 document.getElementById('logoutBtn').addEventListener('click', async () => {
