@@ -197,6 +197,37 @@
     </div>
 </div>
 
+<!-- Mandatory Rejection Reason Modal -->
+<div class="modal fade" id="rejectModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header border-bottom-0 pb-0">
+                <h5 class="modal-title fw-bold text-dark"><i class="bi bi-x-circle-fill text-danger me-2"></i>Reject Activity Proposal</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="rejectForm">
+                <div class="modal-body py-3">
+                    <input type="hidden" id="rejectActivityId">
+                    <p class="text-muted small mb-2">
+                        Proposal: <strong id="rejectActivityTitle" class="text-dark">--</strong>
+                    </p>
+                    <div class="mb-3">
+                        <label for="rejectionReasonInput" class="form-label small fw-bold text-muted text-uppercase mb-1">REASON FOR REJECTION *</label>
+                        <textarea id="rejectionReasonInput" class="form-control" rows="4" placeholder="Explain why this proposal is rejected..." required></textarea>
+                        <small class="form-text text-muted">This feedback will be shared directly with LGU Vinzons.</small>
+                    </div>
+                </div>
+                <div class="modal-footer border-top-0 pt-0">
+                    <button type="button" class="btn btn-sm btn-outline-secondary px-3" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-sm btn-danger fw-bold px-3">
+                        <i class="bi bi-x-circle-fill me-1"></i> Confirm Rejection
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- Modal: Create New MOA Agreement -->
 <div class="modal fade" id="createMoaModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -306,8 +337,8 @@ async function loadAdminDashboard() {
                         <td>${formattedDate}</td>
                         <td class="text-end">
                             <div class="d-inline-flex gap-1">
-                                <button onclick="evaluateProposal(${p.activity_id}, 'approve')" class="btn btn-sm btn-success py-1 px-2 fw-bold" style="font-size: 0.75rem;">Approve</button>
-                                <button onclick="evaluateProposal(${p.activity_id}, 'reject')" class="btn btn-sm btn-outline-danger py-1 px-2 fw-bold" style="font-size: 0.75rem;">Reject</button>
+                                <button onclick="evaluateProposalDirect(${p.activity_id}, 'approve')" class="btn btn-sm btn-success py-1 px-2 fw-bold" style="font-size: 0.75rem;">Approve</button>
+                                <button onclick="openRejectModal(${p.activity_id}, '${escapeHtml(p.title)}')" class="btn btn-sm btn-outline-danger py-1 px-2 fw-bold" style="font-size: 0.75rem;">Reject</button>
                             </div>
                         </td>
                     </tr>
@@ -343,7 +374,55 @@ async function loadAdminDashboard() {
     }
 }
 
-async function evaluateProposal(activity_id, decision) {
+function openRejectModal(activityId, title) {
+    document.getElementById('rejectActivityId').value = activityId;
+    document.getElementById('rejectActivityTitle').textContent = title;
+    document.getElementById('rejectionReasonInput').value = '';
+
+    const modal = new bootstrap.Modal(document.getElementById('rejectModal'));
+    modal.show();
+}
+
+document.getElementById('rejectForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const activity_id = document.getElementById('rejectActivityId').value;
+    const rejection_reason = document.getElementById('rejectionReasonInput').value.trim();
+
+    if (!rejection_reason) {
+        alert('Please provide a reason for rejecting this proposal.');
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/admin/activities/evaluate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                activity_id: activity_id,
+                decision: 'reject',
+                rejection_reason: rejection_reason
+            })
+        });
+
+        const data = await res.json();
+        const modalEl = document.getElementById('rejectModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        if (modal) modal.hide();
+
+        if (res.ok && data.success) {
+            showAlert('success', data.message || 'Activity proposal rejected successfully.');
+            loadAdminDashboard();
+        } else {
+            showAlert('danger', data.error || 'Failed to reject proposal.');
+        }
+    } catch (err) {
+        console.error('Rejection submit error:', err);
+        showAlert('danger', 'Failed to connect to the server.');
+    }
+});
+
+async function evaluateProposalDirect(activity_id, decision) {
     try {
         const res = await fetch('/api/admin/activities/evaluate', {
             method: 'POST',
@@ -351,8 +430,12 @@ async function evaluateProposal(activity_id, decision) {
             body: JSON.stringify({ activity_id, decision })
         });
         const data = await res.json();
-        if (res.ok) showAlert('success', data.message);
-        loadAdminDashboard();
+        if (res.ok && data.success) {
+            showAlert('success', data.message || 'Activity proposal approved successfully!');
+            loadAdminDashboard();
+        } else {
+            showAlert('danger', data.error || 'Failed to evaluate activity.');
+        }
     } catch (err) {
         console.error('Proposal decision error:', err);
     }
@@ -435,6 +518,11 @@ function showAlert(type, msg) {
             <button type="button" class="btn-close py-2" data-bs-dismiss="alert"></button>
         </div>
     `;
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
 document.getElementById('logoutBtn').addEventListener('click', async () => {

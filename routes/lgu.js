@@ -6,12 +6,11 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 // Security Guard: Restrict exclusively to LGU Vinzons / Agency Admins
 router.use(requireAuth, requireRole('Agency Admin'));
 
-// --- 1. LGU DASHBOARD STATS & RECENT ACTIVITIES ---
+// --- 1. LGU DASHBOARD (Executive Summary) ---
 router.get('/dashboard', async (req, res) => {
   const selectedActId = parseInt(req.query.act_id, 10) || 0;
 
   try {
-    // Statistical Queries
     const deptCountRes = await pool.query('SELECT COUNT(*) AS total FROM lgu_departments');
     const pendingRes = await pool.query("SELECT COUNT(*) AS total FROM programs_activities WHERE status = 'Pending'");
     const approvedRes = await pool.query("SELECT COUNT(*) AS total FROM programs_activities WHERE status = 'Approved'");
@@ -19,7 +18,7 @@ router.get('/dashboard', async (req, res) => {
       "SELECT COUNT(*) AS total FROM activity_participants WHERE status IN ('Joined', 'Completed')"
     );
 
-    // Fetch Recent Approved Activities
+    // Fetch top 5 recent approved activities for quick dashboard viewing
     const approvedActivitiesQuery = `
       SELECT p.*, d.dept_name,
              (SELECT COUNT(*) FROM activity_participants ap WHERE ap.activity_id = p.activity_id) AS total_joined
@@ -30,7 +29,6 @@ router.get('/dashboard', async (req, res) => {
     `;
     const approvedActivities = await pool.query(approvedActivitiesQuery);
 
-    // Fetch Student Time Logs for Selected Activity
     let studentLogs = [];
     if (selectedActId > 0) {
       const logsQuery = `
@@ -66,6 +64,32 @@ router.get('/dashboard', async (req, res) => {
   }
 });
 
+// --- 2. FETCH ALL EXTENSION ACTIVITIES (Full Page) ---
+router.get('/activities', async (req, res) => {
+  const { status } = req.query;
+  try {
+    let query = `
+      SELECT p.*, d.dept_name,
+             (SELECT COUNT(*) FROM activity_participants ap WHERE ap.activity_id = p.activity_id) AS total_joined
+      FROM programs_activities p
+      LEFT JOIN lgu_departments d ON p.dept_id = d.dept_id
+    `;
+    let params = [];
+
+    if (status && status !== 'All') {
+      query += ' WHERE p.status = $1';
+      params.push(status);
+    }
+
+    query += ' ORDER BY p.target_date DESC';
+    const { rows } = await pool.query(query, params);
+    res.json({ success: true, activities: rows });
+  } catch (err) {
+    console.error('Fetch LGU Activities Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- 2. FETCH EXTENSION ACTIVITIES ---
 router.get('/activities', async (req, res) => {
   const { status } = req.query;
@@ -91,7 +115,7 @@ router.get('/activities', async (req, res) => {
   }
 });
 
-// Helper function: Exact match to PHP pg_query_params logic
+// Helper function: Submit proposed community extension activity with validity lifespan
 const handleProposeActivity = async (req, res) => {
   const title           = req.body.title ? req.body.title.trim() : '';
   const dept_id         = req.body.dept_id ? parseInt(req.body.dept_id, 10) : null;
@@ -101,7 +125,9 @@ const handleProposeActivity = async (req, res) => {
   const estimated_hours = parseInt(req.body.estimated_hours, 10) || 0;
   const target_date     = req.body.target_date ? req.body.target_date.trim() : '';
   const description     = req.body.description ? req.body.description.trim() : '';
-  
+  const agency_id       = req.body.agency_id ? parseInt(req.body.agency_id, 10) : null;
+  const lifespan_days   = req.body.lifespan_days ? parseInt(req.body.lifespan_days, 10) : 14;
+
   // Automatic Status: Always set to 'Pending' for OLLCF Extension Office review
   const status          = 'Pending';
 
@@ -110,23 +136,29 @@ const handleProposeActivity = async (req, res) => {
   }
 
   try {
+    // Calculate validity expiration date
+    const expires_at = new Date();
+    expires_at.setDate(expires_at.getDate() + lifespan_days);
+
     const insert_sql = `
       INSERT INTO programs_activities 
-      (title, dept_id, target_course, location, max_volunteers, estimated_hours, description, target_date, status) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      RETURNING activity_id
+      (title, dept_id, agency_id, target_course, location, max_volunteers, estimated_hours, description, target_date, status, expires_at) 
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      RETURNING activity_id, expires_at
     `;
 
     const values = [
       title, 
-      dept_id, 
-      target_course, 
+      dept_id,
+      agency_id,
+      target_course || 'All Courses', 
       location, 
       max_volunteers, 
       estimated_hours, 
       description, 
       target_date, 
-      status
+      status,
+      expires_at
     ];
 
     const { rows } = await pool.query(insert_sql, values);
@@ -134,7 +166,8 @@ const handleProposeActivity = async (req, res) => {
     res.json({
       success: true,
       message: "Activity proposal submitted successfully! Pending OLLCF Extension Office review.",
-      activity_id: rows[0].activity_id
+      activity_id: rows[0].activity_id,
+      expires_at: rows[0].expires_at
     });
   } catch (err) {
     console.error('Propose Activity Error:', err);
@@ -167,6 +200,7 @@ router.get('/pin-activities', async (req, res) => {
     res.status(500).json({ error: 'Failed to retrieve activities for PIN management.' });
   }
 });
+
 // --- 5. SET & MANAGE ON-SITE ATTENDANCE PIN PASSCODES ---
 router.post('/attendance/pins', async (req, res) => {
   const { activity_id, time_in_passcode, time_out_passcode } = req.body;

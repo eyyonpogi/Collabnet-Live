@@ -14,6 +14,13 @@ router.get('/dashboard', async (req, res) => {
       "UPDATE partnerships SET status = 'Expired' WHERE end_date < CURRENT_DATE AND status != 'Expired'"
     );
 
+    // Auto-Expire Pending Activities: Mark overdue pending proposals as Expired
+    await pool.query(`
+      UPDATE public.programs_activities
+      SET status = 'Expired'
+      WHERE status = 'Pending' AND expires_at < CURRENT_TIMESTAMP
+    `);
+
     // Operational KPI Queries
     const pendingStudentsRes = await pool.query(
       "SELECT COUNT(*) as count FROM users WHERE role = 'Student' AND verification_status = 'Pending'"
@@ -108,25 +115,65 @@ router.post('/students/verify', async (req, res) => {
   }
 });
 
-// --- 3. EXTENSION ACTIVITY PROPOSALS EVALUATION ---
+// --- 3. GET ALL ACTIVITIES WITH AUTO-EXPIRATION CHECK ---
+router.get('/activities', async (req, res) => {
+  try {
+    // Mark overdue pending proposals as 'Expired'
+    await pool.query(`
+      UPDATE public.programs_activities
+      SET status = 'Expired'
+      WHERE status = 'Pending' AND expires_at < CURRENT_TIMESTAMP
+    `);
+
+    // Fetch all activities with rejection reasons and validity dates
+    const query = `
+      SELECT 
+        a.*, 
+        ag.agency_name, 
+        d.dept_name 
+      FROM public.programs_activities a
+      LEFT JOIN public.agencies ag ON a.agency_id = ag.agency_id
+      LEFT JOIN public.lgu_departments d ON a.dept_id = d.dept_id
+      ORDER BY a.activity_id DESC;
+    `;
+    const { rows } = await pool.query(query);
+    res.json({ success: true, activities: rows });
+  } catch (err) {
+    console.error('Error fetching activities:', err);
+    res.status(500).json({ error: 'Server error while fetching activities.' });
+  }
+});
+
+// --- 4. EXTENSION ACTIVITY PROPOSALS EVALUATION ---
 router.post('/activities/evaluate', async (req, res) => {
-  const { activity_id, decision } = req.body;
-  const adminId = req.session.user_id;
+  const { activity_id, decision, rejection_reason } = req.body;
+  const adminId = req.session.user_id || req.session.userId;
 
   if (!activity_id || !['approve', 'reject'].includes(decision)) {
     return res.status(400).json({ error: 'Invalid activity ID or evaluation decision.' });
   }
 
+  // Validates rejection reason
+  if (decision === 'reject' && (!rejection_reason || rejection_reason.trim() === '')) {
+    return res.status(400).json({ error: 'A valid rejection reason is required when rejecting an activity.' });
+  }
+
   try {
     const statusVal = decision === 'approve' ? 'Approved' : 'Rejected';
+    const reasonText = decision === 'reject' ? rejection_reason.trim() : null;
 
+    // Updates status and rejection_reason in programs_activities
     await pool.query(
-      'UPDATE programs_activities SET status = $1 WHERE activity_id = $2',
-      [statusVal, activity_id]
+      'UPDATE programs_activities SET status = $1, rejection_reason = $2 WHERE activity_id = $3',
+      [statusVal, reasonText, activity_id]
     );
 
-    // Write to audit trail
-    const logText = `Extension Activity ID #${activity_id} was ${statusVal.toLowerCase()} by ${req.session.full_name}`;
+    // Writes audit log to activity_logs table
+    let logText = `Extension Activity ID #${activity_id} was ${statusVal.toLowerCase()} by ${req.session.full_name || 'Extension Director'}`;
+    if (decision === 'reject') {
+      logText += `. Reason: ${reasonText}`;
+    }
+
     await pool.query(
       'INSERT INTO activity_logs (activity_id, user_id, action_taken) VALUES ($1, $2, $3)',
       [activity_id, adminId, logText]
@@ -139,7 +186,7 @@ router.post('/activities/evaluate', async (req, res) => {
   }
 });
 
-// --- 4. ATTENDANCE & CERTIFICATE AUDIT ---
+// --- 5. ATTENDANCE & CERTIFICATE AUDIT ---
 router.get('/attendance/audit/:activityId', async (req, res) => {
   const activityId = parseInt(req.params.activityId, 10);
 
@@ -224,6 +271,7 @@ router.post('/attendance/verify-certificate', async (req, res) => {
     res.status(500).json({ error: 'Failed to issue certificate.' });
   }
 });
+
 router.get('/activities/approved', async (req, res) => {
   try {
     const query = `
@@ -239,15 +287,22 @@ router.get('/activities/approved', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch approved activities.' });
   }
 });
+
 // --- 6. LIST & FILTER ACTIVITIES BY STATUS ---
-// --- LIST & FILTER ACTIVITIES BY STATUS ---
 router.get('/activities/list', async (req, res) => {
   const status = req.query.status || 'Pending';
 
   try {
+    // Auto-expire check before filtering
+    await pool.query(`
+      UPDATE public.programs_activities
+      SET status = 'Expired'
+      WHERE status = 'Pending' AND expires_at < CURRENT_TIMESTAMP
+    `);
+
     let query = `
       SELECT p.activity_id, p.title, p.description, p.target_course, p.location, 
-             p.target_date, p.estimated_hours, p.max_volunteers, p.status, 
+             p.target_date, p.estimated_hours, p.max_volunteers, p.status, p.rejection_reason, p.expires_at,
              d.dept_name 
       FROM programs_activities p
       LEFT JOIN lgu_departments d ON p.dept_id = d.dept_id
@@ -263,7 +318,6 @@ router.get('/activities/list', async (req, res) => {
 
     const { rows } = await pool.query(query, params);
     
-    // Express returns rows cleanly as JSON
     res.json({ success: true, activities: rows, filterStatus: status });
   } catch (err) {
     console.error('Fetch Admin Activities Error:', err);
