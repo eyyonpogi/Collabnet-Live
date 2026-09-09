@@ -165,11 +165,42 @@
                     </div>
                 </div>
                 <h6 class="fw-bold text-dark mb-1">Description & Objectives:</h6>
-                <p id="modalDescription" class="text-muted small mb-0" style="line-height: 1.6;">--</p>
+                <div id="modalDescription" class="text-muted small mb-0" style="line-height: 1.6;">--</div>
             </div>
             <div class="modal-footer border-top-0 pt-0" id="modalFooterActions">
                 <button type="button" class="btn btn-sm btn-secondary fw-semibold" data-bs-dismiss="modal">Close</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Mandatory Rejection Reason Modal -->
+<div class="modal fade" id="rejectModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header border-bottom-0 pb-0">
+                <h5 class="modal-title fw-bold text-dark"><i class="bi bi-x-circle-fill text-danger me-2"></i>Reject Activity Proposal</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="rejectForm">
+                <div class="modal-body py-3">
+                    <input type="hidden" id="rejectActivityId">
+                    <p class="text-muted small mb-2">
+                        Proposal: <strong id="rejectActivityTitle" class="text-dark">--</strong>
+                    </p>
+                    <div class="mb-3">
+                        <label for="rejectionReasonInput" class="form-label small fw-bold text-muted text-uppercase mb-1">REASON FOR REJECTION *</label>
+                        <textarea id="rejectionReasonInput" class="form-control" rows="4" placeholder="Explain why this proposal is rejected (e.g., Conflict with academic schedule, scope requires approval from provincial office...)" required></textarea>
+                        <small class="form-text text-muted">This explanation will be shared directly with LGU Vinzons.</small>
+                    </div>
+                </div>
+                <div class="modal-footer border-top-0 pt-0">
+                    <button type="button" class="btn btn-sm btn-outline-secondary px-3" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-sm btn-danger fw-bold px-3">
+                        <i class="bi bi-x-circle-fill me-1"></i> Confirm Rejection
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -220,8 +251,10 @@ function renderActivitiesTable(activities) {
             badgeHtml = `<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1">Approved</span>`;
         } else if (act.status === 'Pending') {
             badgeHtml = `<span class="badge bg-warning bg-opacity-10 text-dark border border-warning px-2 py-1">Pending Review</span>`;
+        } else if (act.status === 'Expired') {
+            badgeHtml = `<span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25 px-2 py-1">Expired</span>`;
         } else {
-            badgeHtml = `<span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 px-2 py-1">Rejected</span>`;
+            badgeHtml = `<span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 px-2 py-1" title="${escapeHtml(act.rejection_reason || 'No reason provided')}">Rejected <i class="bi bi-info-circle-fill ms-1"></i></span>`;
         }
 
         let actionBtns = `
@@ -232,8 +265,8 @@ function renderActivitiesTable(activities) {
 
         if (act.status === 'Pending') {
             actionBtns += `
-                <button onclick="evaluateProposal(${act.activity_id}, 'approve')" class="btn btn-sm btn-success py-1 px-2 fw-bold ms-1" style="font-size: 0.75rem;"><i class="bi bi-check-lg me-1"></i>Approve</button>
-                <button onclick="evaluateProposal(${act.activity_id}, 'reject')" class="btn btn-sm btn-outline-danger py-1 px-2 fw-bold ms-1" style="font-size: 0.75rem;">Reject</button>
+                <button onclick="evaluateProposalDirect(${act.activity_id}, 'approve')" class="btn btn-sm btn-success py-1 px-2 fw-bold ms-1" style="font-size: 0.75rem;"><i class="bi bi-check-lg me-1"></i>Approve</button>
+                <button onclick="openRejectModal(${act.activity_id}, '${escapeHtml(act.title)}')" class="btn btn-sm btn-outline-danger py-1 px-2 fw-bold ms-1" style="font-size: 0.75rem;">Reject</button>
             `;
         }
 
@@ -274,15 +307,27 @@ function showDetailsModal(actId) {
     document.getElementById('modalLocation').textContent = act.location || 'Vinzons';
     document.getElementById('modalHours').textContent = `${act.estimated_hours || 0} Hours`;
     document.getElementById('modalCapacity').textContent = `${act.max_volunteers || 0} Slots`;
-    document.getElementById('modalDescription').textContent = act.description || 'No description provided.';
+
+    const descElem = document.getElementById('modalDescription');
+    if (act.status === 'Rejected' && act.rejection_reason) {
+        descElem.innerHTML = `
+            <div class="alert alert-danger py-2 px-3 mb-3 small">
+                <strong><i class="bi bi-exclamation-triangle-fill me-1"></i> Rejection Reason:</strong><br>
+                ${escapeHtml(act.rejection_reason)}
+            </div>
+            <strong>Description & Objectives:</strong><br>${escapeHtml(act.description || 'No description provided.')}
+        `;
+    } else {
+        descElem.textContent = act.description || 'No description provided.';
+    }
 
     const footer = document.getElementById('modalFooterActions');
     let footerBtns = `<button type="button" class="btn btn-sm btn-secondary fw-semibold" data-bs-dismiss="modal">Close</button>`;
 
     if (act.status === 'Pending') {
         footerBtns += `
-            <button onclick="evaluateProposal(${act.activity_id}, 'reject')" class="btn btn-sm btn-outline-danger fw-bold ms-1">Reject Proposal</button>
-            <button onclick="evaluateProposal(${act.activity_id}, 'approve')" class="btn btn-sm btn-success fw-bold px-3 ms-1">Approve Proposal</button>
+            <button onclick="closeDetailsAndOpenReject(${act.activity_id}, '${escapeHtml(act.title)}')" class="btn btn-sm btn-outline-danger fw-bold ms-1">Reject Proposal</button>
+            <button onclick="evaluateProposalDirect(${act.activity_id}, 'approve')" class="btn btn-sm btn-success fw-bold px-3 ms-1">Approve Proposal</button>
         `;
     }
     footer.innerHTML = footerBtns;
@@ -291,7 +336,63 @@ function showDetailsModal(actId) {
     modal.show();
 }
 
-async function evaluateProposal(activity_id, decision) {
+function closeDetailsAndOpenReject(activityId, title) {
+    const modalEl = document.getElementById('detailsModal');
+    const modal = bootstrap.Modal.getInstance(modalEl);
+    if (modal) modal.hide();
+
+    openRejectModal(activityId, title);
+}
+
+function openRejectModal(activityId, title) {
+    document.getElementById('rejectActivityId').value = activityId;
+    document.getElementById('rejectActivityTitle').textContent = title;
+    document.getElementById('rejectionReasonInput').value = '';
+
+    const modal = new bootstrap.Modal(document.getElementById('rejectModal'));
+    modal.show();
+}
+
+document.getElementById('rejectForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const activity_id = document.getElementById('rejectActivityId').value;
+    const rejection_reason = document.getElementById('rejectionReasonInput').value.trim();
+
+    if (!rejection_reason) {
+        alert('Please provide a reason for rejecting this proposal.');
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/admin/activities/evaluate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                activity_id: activity_id,
+                decision: 'reject',
+                rejection_reason: rejection_reason
+            })
+        });
+
+        const data = await res.json();
+        const modalEl = document.getElementById('rejectModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        if (modal) modal.hide();
+
+        if (res.ok && data.success) {
+            showAlert('success', data.message || 'Activity proposal rejected successfully.');
+            loadActivities(currentStatusFilter);
+        } else {
+            showAlert('danger', data.error || 'Failed to reject proposal.');
+        }
+    } catch (err) {
+        console.error('Rejection submit error:', err);
+        showAlert('danger', 'Failed to connect to the server.');
+    }
+});
+
+async function evaluateProposalDirect(activity_id, decision) {
     try {
         const res = await fetch('/api/admin/activities/evaluate', {
             method: 'POST',
@@ -304,8 +405,8 @@ async function evaluateProposal(activity_id, decision) {
         const modal = bootstrap.Modal.getInstance(modalEl);
         if (modal) modal.hide();
 
-        if (res.ok) {
-            showAlert('success', data.message || 'Activity status updated successfully!');
+        if (res.ok && data.success) {
+            showAlert('success', data.message || 'Activity proposal approved successfully!');
             loadActivities(currentStatusFilter);
         } else {
             showAlert('danger', data.error || 'Failed to update proposal status.');
@@ -339,6 +440,11 @@ function showAlert(type, msg) {
             <button type="button" class="btn-close py-2" data-bs-dismiss="alert"></button>
         </div>
     `;
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
 document.getElementById('logoutBtn').addEventListener('click', async () => {
