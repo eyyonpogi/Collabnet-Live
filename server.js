@@ -59,11 +59,16 @@ app.get('/verify-certificate/:cert_no', (req, res) => {
 app.get('/api/public/verify-certificate/:cert_no', async (req, res) => {
     const { cert_no } = req.params;
 
-    try {
-        // Extract raw numeric participant_id if cert_no follows format 'CERT-YYYY-00070' or '70'
-        const numericIdMatch = cert_no.match(/\d+$/);
-        const extractedId = numericIdMatch ? parseInt(numericIdMatch[0], 10) : null;
+    if (!cert_no) {
+        return res.status(400).json({ success: false, valid: false, message: 'Certificate reference number is required.' });
+    }
 
+    try {
+        // Extract raw numeric participant_id from format like 'CERT-2026-00070' or '70'
+        const numericMatch = cert_no.match(/\d+$/);
+        const extractedId = numericMatch ? parseInt(numericMatch[0], 10) : NaN;
+
+        // Query participant details cleanly without forcing invalid type comparisons
         const query = `
             SELECT 
                 p.participant_id,
@@ -84,20 +89,22 @@ app.get('/api/public/verify-certificate/:cert_no', async (req, res) => {
             LEFT JOIN lgu_departments d ON a.dept_id = d.dept_id
             WHERE p.participant_id = $1 OR p.participant_id::text = $2
         `;
-        
-        const result = await db.query(query, [extractedId, cert_no]);
+
+        // Pass valid integer or fallback to 0 if NaN to avoid PostgreSQL 22P02 error
+        const paramId = isNaN(extractedId) ? 0 : extractedId;
+        const result = await db.query(query, [paramId, cert_no]);
 
         if (result.rows.length === 0) {
             return res.status(404).json({ 
                 success: false, 
                 valid: false, 
-                message: 'Invalid Certificate Number. No record found in CollabNet database.' 
+                message: 'Invalid Certificate Number. No matching record found in CollabNet database.' 
             });
         }
 
         const record = result.rows[0];
 
-        // Check if student completed hours or target was reached
+        // Verify hours and completion status
         const rendered = parseFloat(record.hours_rendered || 0);
         const target = parseFloat(record.estimated_hours || 0);
         const isCompleted = record.target_reached || rendered >= target;
@@ -106,7 +113,7 @@ app.get('/api/public/verify-certificate/:cert_no', async (req, res) => {
             return res.status(400).json({
                 success: false,
                 valid: false,
-                message: 'Certificate is invalid: Student timed out early and is ineligible.'
+                message: 'Certificate is invalid: Student timed out early and is marked ineligible.'
             });
         }
 
@@ -129,8 +136,13 @@ app.get('/api/public/verify-certificate/:cert_no', async (req, res) => {
         });
 
     } catch (err) {
-        console.error('QR Verification Error:', err);
-        return res.status(500).json({ success: false, message: 'Server error verifying certificate.' });
+        console.error('QR Verification Server Error:', err);
+        return res.status(500).json({ 
+            success: false, 
+            valid: false, 
+            message: 'Server error verifying certificate. Please check server logs.',
+            error: err.message 
+        });
     }
 });
 const PORT = process.env.PORT || 3000;
