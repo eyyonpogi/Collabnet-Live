@@ -91,36 +91,43 @@ async function generateCertificatePDF(certData) {
             doc.font('Helvetica').fontSize(7)
                .text('Scan QR to verify on CollabNet', 40, 514, { width: 95, align: 'center' });
 
-            // --- 7. CLEAN & PROPERLY ALIGNED SIGNATURE BLOCKS ---
-            const sigLineY = 460;
-            const sigTextY = 467;
-            const subTextY = 482;
+            // --- 7. SIGNATURE BLOCKS WITH INDIVIDUAL NAMES & TITLES ---
+            const sigLineY = 455;
+            const nameY = 462;
+            const titleY = 476;
+            const subTextY = 490;
 
-            // Signature Block 1: LGU Representative (Left)
+            // Signature Block 1: Municipal Mayor (Left Column)
             const col1X = 175;
             const col1Width = 170;
             doc.moveTo(col1X, sigLineY).lineTo(col1X + col1Width, sigLineY).lineWidth(1).strokeColor('#495057').stroke();
-            doc.fillColor('#212529').font('Helvetica-Bold').fontSize(9.5)
-               .text('HON. MUNICIPAL MAYOR', col1X, sigTextY, { width: col1Width, align: 'center' });
-            doc.fillColor('#6c757d').font('Helvetica').fontSize(8)
+            doc.fillColor('#000000').font('Helvetica-Bold').fontSize(10)
+               .text(certData.mayorName || 'HON. DR. ELEANOR F. BUEZA', col1X, nameY, { width: col1Width, align: 'center' });
+            doc.fillColor('#212529').font('Helvetica-Bold').fontSize(8.5)
+               .text('Municipal Mayor', col1X, titleY, { width: col1Width, align: 'center' });
+            doc.fillColor('#6c757d').font('Helvetica').fontSize(7.5)
                .text('LGU Vinzons, Camarines Norte', col1X, subTextY, { width: col1Width, align: 'center' });
 
-            // Signature Block 2: OLLCF Extension Director (Center)
+            // Signature Block 2: Extension Services Director (Center Column)
             const col2X = 385;
             const col2Width = 180;
             doc.moveTo(col2X, sigLineY).lineTo(col2X + col2Width, sigLineY).lineWidth(1).strokeColor('#495057').stroke();
-            doc.fillColor('#212529').font('Helvetica-Bold').fontSize(9.5)
-               .text('EXTENSION SERVICES DIRECTOR', col2X, sigTextY, { width: col2Width, align: 'center' });
-            doc.fillColor('#6c757d').font('Helvetica').fontSize(8)
+            doc.fillColor('#000000').font('Helvetica-Bold').fontSize(10)
+               .text(certData.directorName || 'PROF. ENGR. ARON V. PESEMBRE', col2X, nameY, { width: col2Width, align: 'center' });
+            doc.fillColor('#212529').font('Helvetica-Bold').fontSize(8.5)
+               .text('Extension Services Director', col2X, titleY, { width: col2Width, align: 'center' });
+            doc.fillColor('#6c757d').font('Helvetica').fontSize(7.5)
                .text('Our Lady of Lourdes College Foundation', col2X, subTextY, { width: col2Width, align: 'center' });
 
-            // Signature Block 3: VP for Academic Affairs (Right)
+            // Signature Block 3: VP for Academic Affairs (Right Column)
             const col3X = 605;
             const col3Width = 170;
             doc.moveTo(col3X, sigLineY).lineTo(col3X + col3Width, sigLineY).lineWidth(1).strokeColor('#495057').stroke();
-            doc.fillColor('#212529').font('Helvetica-Bold').fontSize(9.5)
-               .text('VP FOR ACADEMIC AFFAIRS', col3X, sigTextY, { width: col3Width, align: 'center' });
-            doc.fillColor('#6c757d').font('Helvetica').fontSize(8)
+            doc.fillColor('#000000').font('Helvetica-Bold').fontSize(10)
+               .text(certData.vpName || 'DR. MARIA TERESA S. REYES', col3X, nameY, { width: col3Width, align: 'center' });
+            doc.fillColor('#212529').font('Helvetica-Bold').fontSize(8.5)
+               .text('VP for Academic Affairs', col3X, titleY, { width: col3Width, align: 'center' });
+            doc.fillColor('#6c757d').font('Helvetica').fontSize(7.5)
                .text('OLLCF Daet', col3X, subTextY, { width: col3Width, align: 'center' });
 
             // Footer Issuance Notice
