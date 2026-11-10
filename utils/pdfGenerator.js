@@ -77,19 +77,29 @@ async function generateCertificatePDF(certData) {
             doc.fillColor('#198754').font('Helvetica-Bold').fontSize(12.5)
                .text(`${hoursVal} Validated Community Service Hours`, 0, 296, { align: 'center' });
 
-            // --- 6. QR CODE VERIFICATION ---
+            // --- 6. QR CODE & VERIFICATION TEXT (CLEAN & NON-OVERLAPPING Y-OFFSETS) ---
+            const qrX = 45;
+            const qrWidth = 100;
+            const qrY = 390;
+
             try {
                 const qrUrl = `https://collabnet-live.onrender.com/verify-certificate/${certData.certNo}`;
                 const qrDataUrl = await QRCode.toDataURL(qrUrl);
-                doc.image(qrDataUrl, 50, 400, { fit: [75, 75] });
+                doc.image(qrDataUrl, qrX + 12, qrY, { fit: [75, 75] });
             } catch (e) {
                 console.warn('QR Code generation skipped:', e.message);
             }
 
+            // Reference Number Header & Value
             doc.fillColor('#495057').font('Helvetica-Bold').fontSize(8)
-               .text(`Ref. No: ${certData.certNo}`, 40, 480, { width: 95, align: 'center' });
-            doc.font('Helvetica').fontSize(7)
-               .text('Scan QR to verify on CollabNet', 40, 492, { width: 95, align: 'center' });
+               .text('Ref. No:', qrX, qrY + 80, { width: qrWidth, align: 'center' });
+
+            doc.fillColor('#0d6efd').font('Helvetica-Bold').fontSize(8.5)
+               .text(certData.certNo || 'CERT-2026-00000', qrX, qrY + 91, { width: qrWidth, align: 'center' });
+
+            // Verification Notice
+            doc.fillColor('#6c757d').font('Helvetica').fontSize(7)
+               .text('Scan QR to verify on CollabNet', qrX, qrY + 104, { width: qrWidth, align: 'center' });
 
             // --- 7. SIGNATURE BLOCKS (NAMES ABOVE THE LINE) ---
             const nameY = 458;      // Name rendered ABOVE line
@@ -126,7 +136,7 @@ async function generateCertificatePDF(certData) {
                .text(certData.vpName || 'ACE VINCENT BALMEO', col3X, nameY, { width: col3Width, align: 'center' });
             doc.moveTo(col3X, sigLineY).lineTo(col3X + col3Width, sigLineY).lineWidth(1).strokeColor('#495057').stroke();
             doc.fillColor('#212529').font('Helvetica-Bold').fontSize(8.5)
-               .text('VP for Academic Affairs', col3X, titleY, { width: col3Width, align: 'center' });
+               .text('Academic Affairs', col3X, titleY, { width: col3Width, align: 'center' });
             doc.fillColor('#6c757d').font('Helvetica').fontSize(7.5)
                .text('OLLCF Daet', col3X, subTextY, { width: col3Width, align: 'center' });
 
