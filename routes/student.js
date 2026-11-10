@@ -54,6 +54,56 @@ router.get('/dashboard', verifyToken, async (req, res) => {
     }
 });
 
+// GET: Fetch Student Profile Details & Total Statistics
+router.get('/profile', verifyToken, async (req, res) => {
+    const user_id = req.user.user_id;
+
+    try {
+        // 1. Fetch Student User Details
+        const userRes = await db.query(
+            `SELECT user_id, full_name, email, student_id, course, verification_status 
+             FROM users WHERE user_id = $1`,
+            [user_id]
+        );
+
+        if (userRes.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Student profile not found.' });
+        }
+
+        const user = userRes.rows[0];
+
+        // 2. Compute Aggregated Volunteer Metrics
+        const statsRes = await db.query(
+            `SELECT 
+                COUNT(*) AS joined_count,
+                COALESCE(SUM(hours_rendered), 0) AS total_hours
+             FROM activity_participants 
+             WHERE user_id = $1`,
+            [user_id]
+        );
+
+        const stats = statsRes.rows[0];
+
+        return res.json({
+            success: true,
+            profile: {
+                fullName: user.full_name,
+                email: user.email,
+                studentId: user.student_id,
+                course: user.course,
+                verificationStatus: user.verification_status || 'Approved'
+            },
+            stats: {
+                totalHours: parseFloat(stats.total_hours || 0),
+                joinedCount: parseInt(stats.joined_count || 0, 10)
+            }
+        });
+    } catch (err) {
+        console.error('Fetch Profile Error:', err);
+        return res.status(500).json({ success: false, message: 'Failed to load profile details.' });
+    }
+});
+
 // GET: Fetch All Approved Extension Activities for Student Activities Page
 router.get('/activities', verifyToken, async (req, res) => {
     const user_id = req.user.user_id;
