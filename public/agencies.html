@@ -158,9 +158,20 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 async function loadAgencies() {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        window.location.href = '/index.html';
+        return;
+    }
+
     try {
-        const res = await fetch('/api/partnerships/agencies');
+        const res = await fetch('/api/partnerships/agencies', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
         if (res.status === 401 || res.status === 403) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
             window.location.href = '/index.html';
             return;
         }
@@ -189,6 +200,7 @@ async function loadAgencies() {
 
 document.getElementById('addAgencyForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const token = localStorage.getItem('token');
 
     const payload = {
         agency_name: document.getElementById('agencyName').value,
@@ -200,7 +212,10 @@ document.getElementById('addAgencyForm').addEventListener('submit', async (e) =>
     try {
         const res = await fetch('/api/partnerships/agencies', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify(payload)
         });
 
@@ -215,7 +230,7 @@ document.getElementById('addAgencyForm').addEventListener('submit', async (e) =>
             document.getElementById('addAgencyForm').reset();
             loadAgencies();
         } else {
-            showAlert('danger', data.error || 'Failed to add partner agency.');
+            showAlert('danger', data.error || data.message || 'Failed to add partner agency.');
         }
     } catch (err) {
         console.error('Save agency error:', err);
@@ -231,8 +246,9 @@ function showAlert(type, msg) {
     `;
 }
 
-document.getElementById('logoutBtn').addEventListener('click', async () => {
-    await fetch('/api/auth/logout');
+document.getElementById('logoutBtn').addEventListener('click', () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     window.location.href = '/index.html';
 });
 

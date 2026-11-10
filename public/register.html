@@ -32,76 +32,82 @@
                 <span id="errorMessage"></span>
             </div>
 
-            <!-- Inside public/register.html form section -->
-<form id="registerForm">
-  <div class="mb-3">
-    <label for="full_name" class="form-label fw-semibold">Full Name</label>
-    <input type="text" id="full_name" class="form-control" placeholder="Juan Dela Cruz" required>
-  </div>
+            <form id="registerForm">
+              <div class="mb-3">
+                <label for="full_name" class="form-label fw-semibold">Full Name</label>
+                <input type="text" id="full_name" class="form-control" placeholder="Juan Dela Cruz" required>
+              </div>
 
-  <div class="mb-3">
-    <label for="student_id" class="form-label fw-semibold">Student ID</label>
-    <input type="text" id="student_id" class="form-control" placeholder="XX-XXXX" required>
-  </div>
+              <div class="mb-3">
+                <label for="student_id" class="form-label fw-semibold">Student ID</label>
+                <input type="text" id="student_id" class="form-control" placeholder="XX-XXXX" required>
+              </div>
 
-  <div class="mb-3">
-    <label for="email" class="form-label fw-semibold">Email Address</label>
-    <input type="email" id="email" class="form-control" placeholder="student@ollcf.edu.ph" required>
-  </div>
+              <div class="mb-3">
+                <label for="email" class="form-label fw-semibold">Email Address</label>
+                <input type="email" id="email" class="form-control" placeholder="student@ollcf.edu.ph" required>
+              </div>
 
-  <div class="mb-3">
-    <label for="course" class="form-label fw-semibold">Academic Program (Course)</label>
-    <select id="course" class="form-select" required>
-      <option value="" selected disabled>-- Select Your OLLCF Program --</option>
-      <optgroup label="College of Computer Studies">
-        <option value="BSIT">BSIT - BS Information Technology</option>
-        <option value="BSCS">BSCS - BS Computer Science</option>
-      </optgroup>
-      <optgroup label="College of Business Administration">
-        <option value="BSBA">BSBA - BS Business Administration</option>
-      </optgroup>
-      <optgroup label="College of Teacher Education">
-        <option value="BEEd">BEEd - Bachelor in Elementary Education</option>
-        <option value="BSEd">BSEd - Bachelor in Secondary Education</option>
-      </optgroup>
-      <optgroup label="College of Criminal Justice Education">
-        <option value="BSCrim">BSCrim - BS Criminology</option>
-      </optgroup>
-      <optgroup label="College of Hospitality Management">
-        <option value="BSHM">BSHM - BS Hospitality Management</option>
-      </optgroup>
-      <optgroup label="College of Maritime Education">
-        <option value="BSMT">BSMT - BS Marine Transportation</option>
-        <option value="BSMarE">BSMarE - BS Marine Engineering</option>
-      </optgroup>
-      <optgroup label="College of Nursing and Midwifery">
-        <option value="BSN">BSN - BS Nursing</option>
-        <option value="Midwifery">Midwifery - 2-year Diploma Program</option>
-      </optgroup>
-      <optgroup label="College of Medical Technology">
-        <option value="BS MedTech">BS MedTech - BS Medical Technology</option>
-      </optgroup>
-      <optgroup label="College of Psychology">
-        <option value="BSPsych">BSPsych - BS Psychology</option>
-      </optgroup>
-      <optgroup label="College of Law">
-        <option value="Juris Doctor">Juris Doctor (JD)</option>
-      </optgroup>
-    </select>
-  </div>
+              <div class="mb-3">
+                <label for="course" class="form-label fw-semibold">Academic Program (Course)</label>
+                <select id="course" class="form-select" required>
+                  <option value="" selected disabled>-- Select Your OLLCF Program --</option>
+                  <optgroup label="College of Computer Studies">
+                    <option value="BSIT">BSIT - BS Information Technology</option>
+                    <option value="BSCS">BSCS - BS Computer Science</option>
+                  </optgroup>
+                  <optgroup label="College of Business Administration">
+                    <option value="BSBA">BSBA - BS Business Administration</option>
+                  </optgroup>
+                  <optgroup label="College of Teacher Education">
+                    <option value="BEEd">BEEd - Bachelor in Elementary Education</option>
+                    <option value="BSEd">BSEd - Bachelor in Secondary Education</option>
+                  </optgroup>
+                  <optgroup label="College of Criminal Justice Education">
+                    <option value="BSCrim">BSCrim - BS Criminology</option>
+                  </optgroup>
+                  <optgroup label="College of Hospitality Management">
+                    <option value="BSHM">BSHM - BS Hospitality Management</option>
+                  </optgroup>
+                  <optgroup label="College of Maritime Education">
+                    <option value="BSMT">BSMT - BS Marine Transportation</option>
+                    <option value="BSMarE">BSMarE - BS Marine Engineering</option>
+                  </optgroup>
+                  <optgroup label="College of Nursing and Midwifery">
+                    <option value="BSN">BSN - BS Nursing</option>
+                    <option value="Midwifery">Midwifery - 2-year Diploma Program</option>
+                  </optgroup>
+                  <optgroup label="College of Medical Technology">
+                    <option value="BS MedTech">BS MedTech - BS Medical Technology</option>
+                  </optgroup>
+                  <optgroup label="College of Psychology">
+                    <option value="BSPsych">BSPsych - BS Psychology</option>
+                  </optgroup>
+                  <optgroup label="College of Law">
+                    <option value="Juris Doctor">Juris Doctor (JD)</option>
+                  </optgroup>
+                </select>
+              </div>
 
-  <div class="mb-3">
-    <label for="password" class="form-label fw-semibold">Password</label>
-    <input type="password" id="password" class="form-control" required>
-  </div>
+              <div class="mb-3">
+                <label for="password" class="form-label fw-semibold">Password</label>
+                <input type="password" id="password" class="form-control" required>
+              </div>
 
-  <div class="mb-3">
-    <label for="confirm_password" class="form-label fw-semibold">Confirm Password</label>
-    <input type="password" id="confirm_password" class="form-control" required>
-  </div>
+              <div class="mb-3">
+                <label for="confirm_password" class="form-label fw-semibold">Confirm Password</label>
+                <input type="password" id="confirm_password" class="form-control" required>
+              </div>
 
-  <button type="submit" class="btn btn-primary w-100 fw-bold">Register Account</button>
-</form>
+              <button type="submit" class="btn btn-primary w-100 fw-bold">Register Account</button>
+            </form>
+            
+            <div class="text-center mt-3">
+                <a href="/index.html" class="text-decoration-none small text-muted">Already have an account? Log in</a>
+            </div>
+        </div>
+    </div>
+</div>
 
 <script>
 document.getElementById('registerForm').addEventListener('submit', async (e) => {
@@ -115,7 +121,9 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
   const confirm_password = document.getElementById('confirm_password').value;
 
   if (password !== confirm_password) {
-    alert('Passwords do not match!');
+    const errorAlert = document.getElementById('errorAlert');
+    document.getElementById('errorMessage').textContent = 'Passwords do not match!';
+    errorAlert.classList.remove('d-none');
     return;
   }
 
@@ -131,7 +139,9 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
       alert(data.message || 'Registration submitted! Awaiting verification.');
       window.location.href = '/index.html';
     } else {
-      alert(data.error || 'Registration failed.');
+      const errorAlert = document.getElementById('errorAlert');
+      document.getElementById('errorMessage').textContent = data.error || data.message || 'Registration failed.';
+      errorAlert.classList.remove('d-none');
     }
   } catch (err) {
     console.error('Registration error:', err);

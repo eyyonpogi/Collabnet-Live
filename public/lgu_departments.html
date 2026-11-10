@@ -45,8 +45,8 @@
             <i class="bi bi-calendar-event"></i> Extension Activities
         </a>
         <a href="/lgu_logs.html" class="nav-link">
-    <i class="bi bi-clock-history"></i> Attendance Logs
-</a>
+            <i class="bi bi-clock-history"></i> Attendance Logs
+        </a>
 
         <div class="mt-auto p-3 border-top border-secondary border-opacity-25">
             <small class="text-muted d-block" style="font-size: 0.7rem;">Logged in as:</small>
@@ -156,9 +156,20 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 async function loadDepartments() {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        window.location.href = '/index.html';
+        return;
+    }
+
     try {
-        const res = await fetch('/api/lgu/departments');
+        const res = await fetch('/api/lgu/departments', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
         if (res.status === 401 || res.status === 403) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
             window.location.href = '/index.html';
             return;
         }
@@ -174,9 +185,7 @@ async function loadDepartments() {
 
         body.innerHTML = data.departments.map(d => {
             const isBarangay = d.office_type === 'Barangay';
-            const badgeClass = isBarangay 
-                ? 'bg-info bg-opacity-10 text-info border border-info border-opacity-25' 
-                : 'bg-info bg-opacity-10 text-info border border-info border-opacity-25';
+            const badgeClass = 'bg-info bg-opacity-10 text-info border border-info border-opacity-25';
 
             return `
                 <tr>
@@ -198,6 +207,7 @@ async function loadDepartments() {
 
 document.getElementById('addDeptForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const token = localStorage.getItem('token');
 
     const payload = {
         dept_name: document.getElementById('deptName').value,
@@ -209,7 +219,10 @@ document.getElementById('addDeptForm').addEventListener('submit', async (e) => {
     try {
         const res = await fetch('/api/lgu/departments', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify(payload)
         });
 
@@ -224,7 +237,7 @@ document.getElementById('addDeptForm').addEventListener('submit', async (e) => {
             document.getElementById('addDeptForm').reset();
             loadDepartments();
         } else {
-            showAlert('danger', data.error || 'Failed to add office/barangay.');
+            showAlert('danger', data.error || data.message || 'Failed to add office/barangay.');
         }
     } catch (err) {
         console.error('Save department error:', err);
@@ -240,8 +253,9 @@ function showAlert(type, msg) {
     `;
 }
 
-document.getElementById('logoutBtn').addEventListener('click', async () => {
-    await fetch('/api/auth/logout');
+document.getElementById('logoutBtn').addEventListener('click', () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     window.location.href = '/index.html';
 });
 

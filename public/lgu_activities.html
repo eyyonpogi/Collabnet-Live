@@ -45,8 +45,8 @@
             <i class="bi bi-calendar-event"></i> Extension Activities
         </a>
         <a href="/lgu_logs.html" class="nav-link">
-    <i class="bi bi-clock-history"></i> Attendance Logs
-</a>
+            <i class="bi bi-clock-history"></i> Attendance Logs
+        </a>
 
         <div class="mt-auto p-3 border-top border-secondary border-opacity-25">
             <small class="text-muted d-block" style="font-size: 0.7rem;">Logged in as:</small>
@@ -151,13 +151,11 @@
       
       <form id="proposeActivityForm">
         <div class="modal-body py-3">
-          <!-- Activity Title -->
           <div class="mb-3">
             <label for="act_title" class="form-label small fw-bold text-muted text-uppercase mb-1">ACTIVITY TITLE *</label>
             <input type="text" id="act_title" class="form-control" placeholder="e.g., Coastal Cleanup and Health Awareness" required>
           </div>
 
-          <!-- Proponent Department / Barangay Dropdown -->
           <div class="mb-3">
             <label for="act_dept_id" class="form-label small fw-bold text-muted text-uppercase mb-1">PROPONENT LGU DEPARTMENT / BARANGAY</label>
             <select id="act_dept_id" class="form-select">
@@ -165,7 +163,6 @@
             </select>
           </div>
 
-          <!-- Required Course & Target Location -->
           <div class="row g-3 mb-3">
             <div class="col-md-6">
               <label for="act_target_course" class="form-label small fw-bold text-muted text-uppercase mb-1">REQUIRED COURSE *</label>
@@ -213,7 +210,6 @@
             </div>
           </div>
 
-          <!-- Target Date, Max Volunteers, Estimated Hours -->
           <div class="row g-3 mb-3">
             <div class="col-md-4">
               <label for="act_target_date" class="form-label small fw-bold text-muted text-uppercase mb-1">TARGET DATE *</label>
@@ -229,7 +225,6 @@
             </div>
           </div>
 
-          <!-- Proposal Lifespan Field -->
           <div class="mb-3">
             <label for="act_lifespan_days" class="form-label small fw-bold text-muted text-uppercase mb-1">PROPOSAL LIFESPAN (VALIDITY PERIOD)</label>
             <select id="act_lifespan_days" class="form-select">
@@ -241,7 +236,6 @@
             <small class="form-text text-muted">If the Extension Director does not review this proposal within this period, it will automatically expire.</small>
           </div>
 
-          <!-- Description & Objectives -->
           <div class="mb-3">
             <label for="act_description" class="form-label small fw-bold text-muted text-uppercase mb-1">DESCRIPTION & OBJECTIVES</label>
             <textarea id="act_description" class="form-control" rows="3" placeholder="Outline objectives and student responsibilities..."></textarea>
@@ -307,19 +301,31 @@ let loadedActivities = [];
 
 async function loadLguActivities(status = 'Pending') {
     currentStatusFilter = status;
+    const token = localStorage.getItem('token');
+    if (!token) {
+        window.location.href = '/index.html';
+        return;
+    }
+
     const body = document.getElementById('activitiesTableBody');
     body.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm text-primary me-2"></div>Loading activities...</td></tr>`;
 
     try {
-        let res = await fetch(`/api/lgu/activities?status=${encodeURIComponent(status)}`);
+        let res = await fetch(`/api/lgu/activities?status=${encodeURIComponent(status)}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
         
-        if (!res.ok) {
-            res = await fetch('/api/lgu/dashboard');
+        if (res.status === 401 || res.status === 403) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.location.href = '/index.html';
+            return;
         }
 
         if (!res.ok) {
-            body.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-4">No activities records returned.</td></tr>`;
-            return;
+            res = await fetch('/api/lgu/dashboard', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
         }
 
         const contentType = res.headers.get('content-type');
@@ -343,8 +349,11 @@ async function loadLguActivities(status = 'Pending') {
 }
 
 async function loadLguDepartmentsDropdown() {
+    const token = localStorage.getItem('token');
     try {
-        const res = await fetch('/api/lgu/departments');
+        const res = await fetch('/api/lgu/departments', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
         if (!res.ok) return;
 
         const contentType = res.headers.get('content-type');
@@ -449,6 +458,7 @@ function showDetailsModal(actId) {
 
 document.getElementById('proposeActivityForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const token = localStorage.getItem('token');
 
     const rawDate = document.getElementById('act_target_date').value;
     if (!rawDate || isNaN(Date.parse(rawDate))) {
@@ -471,7 +481,10 @@ document.getElementById('proposeActivityForm').addEventListener('submit', async 
     try {
         const res = await fetch('/api/lgu/activities', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify(formData)
         });
 
@@ -479,7 +492,7 @@ document.getElementById('proposeActivityForm').addEventListener('submit', async 
         if (!res.ok) {
             if (contentType && contentType.includes('application/json')) {
                 const errData = await res.json();
-                showAlert('danger', errData.error || 'Failed to submit proposal.');
+                showAlert('danger', errData.error || errData.message || 'Failed to submit proposal.');
             } else {
                 showAlert('danger', `Endpoint Error (${res.status}): Ensure app.use('/api/lgu', lguRoutes) is mounted in server.js.`);
             }
@@ -532,8 +545,9 @@ function escapeHtml(str) {
     return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
-document.getElementById('logoutBtn').addEventListener('click', async () => {
-    await fetch('/api/auth/logout');
+document.getElementById('logoutBtn').addEventListener('click', () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     window.location.href = '/index.html';
 });
 
@@ -541,7 +555,6 @@ document.addEventListener('DOMContentLoaded', () => {
     loadLguActivities('Pending');
     loadLguDepartmentsDropdown();
     
-    // Automatically reset the proposal form on modal hide
     const addModalEl = document.getElementById('addActivityModal');
     if (addModalEl) {
         addModalEl.addEventListener('hidden.bs.modal', () => {

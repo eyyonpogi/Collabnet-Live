@@ -92,9 +92,20 @@ let allActivities = [];
 let currentFilter = 'all';
 
 async function loadActivities() {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        window.location.href = '/index.html';
+        return;
+    }
+
     try {
-        const response = await fetch('/api/student/activities');
-        if (response.status === 401) {
+        const response = await fetch('/api/student/activities', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.status === 401 || response.status === 403) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
             window.location.href = '/index.html';
             return;
         }
@@ -179,25 +190,27 @@ function renderActivities() {
     }).join('');
 }
 
-// Fixed Toggle Join Handler with Schedule Conflict Pop-Up Modal
 async function toggleJoin(activityId, action) {
+    const token = localStorage.getItem('token');
     try {
         const res = await fetch('/api/student/activities/join', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({ activity_id: activityId, action: action })
         });
 
         const data = await res.json();
 
         if (!res.ok) {
-            // Display Schedule Conflict Pop-Up
-            showConflictModal(data.error || 'Failed to process registration request.');
+            showConflictModal(data.message || data.error || 'Failed to process registration request.');
             return;
         }
 
         showAlert('success', data.message || 'Operation successful!');
-        loadActivities(); // Refresh activities view
+        loadActivities();
     } catch (err) {
         console.error('Toggle Join Error:', err);
         showConflictModal('Server connection failure. Please try again.');

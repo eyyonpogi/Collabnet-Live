@@ -184,9 +184,20 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 async function loadPartnerships() {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        window.location.href = '/index.html';
+        return;
+    }
+
     try {
-        const res = await fetch('/api/partnerships');
+        const res = await fetch('/api/partnerships', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
         if (res.status === 401 || res.status === 403) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
             window.location.href = '/index.html';
             return;
         }
@@ -228,8 +239,11 @@ async function loadPartnerships() {
 }
 
 async function loadAgenciesForDropdown() {
+    const token = localStorage.getItem('token');
     try {
-        const res = await fetch('/api/partnerships/agencies');
+        const res = await fetch('/api/partnerships/agencies', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
         const data = await res.json();
         if (!res.ok || !data.success) return;
 
@@ -245,6 +259,7 @@ document.getElementById('moaStartDate').value = new Date().toISOString().split('
 
 document.getElementById('moaForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const token = localStorage.getItem('token');
 
     const payload = {
         agency_id: document.getElementById('moaAgency').value,
@@ -260,7 +275,10 @@ document.getElementById('moaForm').addEventListener('submit', async (e) => {
     try {
         const res = await fetch('/api/partnerships/create', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify(payload)
         });
 
@@ -276,7 +294,7 @@ document.getElementById('moaForm').addEventListener('submit', async (e) => {
             document.getElementById('moaStartDate').value = new Date().toISOString().split('T')[0];
             loadPartnerships();
         } else {
-            showAlert('danger', data.error || 'Failed to register MOA.');
+            showAlert('danger', data.error || data.message || 'Failed to register MOA.');
         }
     } catch (err) {
         console.error('MOA submit error:', err);
@@ -292,8 +310,9 @@ function showAlert(type, msg) {
     `;
 }
 
-document.getElementById('logoutBtn').addEventListener('click', async () => {
-    await fetch('/api/auth/logout');
+document.getElementById('logoutBtn').addEventListener('click', () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     window.location.href = '/index.html';
 });
 

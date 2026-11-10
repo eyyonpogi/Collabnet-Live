@@ -98,9 +98,22 @@
 
 <script>
 async function loadProfile() {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        window.location.href = '/index.html';
+        return;
+    }
+
     try {
-        const res = await fetch('/api/student/profile');
-        if (res.status === 401) {
+        const res = await fetch('/api/student/profile', {
+            headers: { 
+                'Authorization': `Bearer ${token}` 
+            }
+        });
+
+        if (res.status === 401 || res.status === 403) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
             window.location.href = '/index.html';
             return;
         }
@@ -119,8 +132,8 @@ async function loadProfile() {
         document.getElementById('infoEmail').textContent = profile.email;
 
         // Populate Metrics
-        document.getElementById('statTotalHours').textContent = stats.totalHours.toFixed(2);
-        document.getElementById('statJoinedCount').textContent = stats.joinedCount;
+        document.getElementById('statTotalHours').textContent = parseFloat(stats.totalHours || 0).toFixed(2);
+        document.getElementById('statJoinedCount').textContent = stats.joinedCount || 0;
 
         // Verification Badge Status
         const badgeEl = document.getElementById('accountStatusBadge');
@@ -138,8 +151,9 @@ async function loadProfile() {
 }
 
 // Handle Logout
-document.getElementById('logoutBtn').addEventListener('click', async () => {
-    await fetch('/api/auth/logout');
+document.getElementById('logoutBtn').addEventListener('click', () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     window.location.href = '/index.html';
 });
 

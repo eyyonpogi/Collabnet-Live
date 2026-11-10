@@ -45,8 +45,8 @@
             <i class="bi bi-calendar-event"></i> Extension Activities
         </a>
         <a href="/lgu_logs.html" class="nav-link">
-    <i class="bi bi-clock-history"></i> Attendance Logs
-</a>
+            <i class="bi bi-clock-history"></i> Attendance Logs
+        </a>
 
         <div class="mt-auto p-3 border-top border-secondary border-opacity-25">
             <small class="text-muted d-block" style="font-size: 0.7rem;">Logged in as:</small>
@@ -107,9 +107,19 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 async function loadPartnerships() {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        window.location.href = '/index.html';
+        return;
+    }
+
     try {
-        const res = await fetch('/api/partnerships');
+        const res = await fetch('/api/partnerships', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
         if (res.status === 401 || res.status === 403) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
             window.location.href = '/index.html';
             return;
         }
@@ -150,8 +160,9 @@ async function loadPartnerships() {
     }
 }
 
-document.getElementById('logoutBtn').addEventListener('click', async () => {
-    await fetch('/api/auth/logout');
+document.getElementById('logoutBtn').addEventListener('click', () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     window.location.href = '/index.html';
 });
 

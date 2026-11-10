@@ -86,7 +86,7 @@
             <!-- Feedback Alert Container -->
             <div id="alertContainer"></div>
 
-            <!-- Activity Selector Card with Auto-Load On Change -->
+            <!-- Activity Selector Card -->
             <div class="cn-card p-3 mb-4">
                 <div class="w-100">
                     <label class="form-label-custom d-block mb-1 text-uppercase" style="font-size: 0.68rem; letter-spacing: 0.5px;">SELECT APPROVED EXTENSION ACTIVITY</label>
@@ -157,9 +157,19 @@
 let currentActivityId = null;
 
 async function initAuditPage() {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        window.location.href = '/index.html';
+        return;
+    }
+
     try {
-        const res = await fetch('/api/admin/activities/approved');
+        const res = await fetch('/api/admin/activities/approved', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
         if (res.status === 401 || res.status === 403) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
             window.location.href = '/index.html';
             return;
         }
@@ -182,7 +192,6 @@ async function initAuditPage() {
             `;
         }).join('');
 
-        // Auto load initial activity
         if (data.activities.length > 0) {
             currentActivityId = data.activities[0].activity_id;
             loadAuditLogs(currentActivityId);
@@ -201,17 +210,19 @@ function handleSelectChange(activityId) {
 
 async function loadAuditLogs(activityId) {
     if (!activityId) return;
+    const token = localStorage.getItem('token');
 
     try {
-        const res = await fetch(`/api/admin/attendance/audit/${activityId}`);
+        const res = await fetch(`/api/admin/attendance/audit/${activityId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
         const data = await res.json();
 
         if (!res.ok || !data.success) {
-            showAlert('danger', data.error || 'Failed to load activity logs.');
+            showAlert('danger', data.error || data.message || 'Failed to load activity logs.');
             return;
         }
 
-        // Summary Banner
         const act = data.activity;
         const formattedDate = act.target_date ? new Date(act.target_date).toISOString().split('T')[0] : 'N/A';
         
@@ -222,7 +233,6 @@ async function loadAuditLogs(activityId) {
         document.getElementById('actCapacity').textContent = `${act.max_volunteers || 0} Max Capacity`;
         document.getElementById('activitySummaryCard').classList.remove('d-none');
 
-        // Audit Table
         const participants = data.participants || [];
         document.getElementById('participantCountBadge').textContent = `Total Participants: ${participants.length}`;
         const body = document.getElementById('auditTableBody');
@@ -291,10 +301,14 @@ async function loadAuditLogs(activityId) {
 }
 
 async function awardCertificate(participant_id, activityId) {
+    const token = localStorage.getItem('token');
     try {
         const res = await fetch('/api/admin/attendance/verify-certificate', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({ participant_id })
         });
         const data = await res.json();
@@ -303,7 +317,7 @@ async function awardCertificate(participant_id, activityId) {
             showAlert('success', data.message || 'Student participation verified! Certificate awarded.');
             loadAuditLogs(activityId);
         } else {
-            showAlert('danger', data.error || 'Failed to award certificate.');
+            showAlert('danger', data.error || data.message || 'Failed to award certificate.');
         }
     } catch (err) {
         console.error('Award certificate error:', err);
@@ -319,8 +333,9 @@ function showAlert(type, msg) {
     `;
 }
 
-document.getElementById('logoutBtn').addEventListener('click', async () => {
-    await fetch('/api/auth/logout');
+document.getElementById('logoutBtn').addEventListener('click', () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     window.location.href = '/index.html';
 });
 

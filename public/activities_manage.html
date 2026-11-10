@@ -190,7 +190,7 @@
                     </p>
                     <div class="mb-3">
                         <label for="rejectionReasonInput" class="form-label small fw-bold text-muted text-uppercase mb-1">REASON FOR REJECTION *</label>
-                        <textarea id="rejectionReasonInput" class="form-control" rows="4" placeholder="Explain why this proposal is rejected (e.g., Conflict with academic schedule, scope requires approval from provincial office...)" required></textarea>
+                        <textarea id="rejectionReasonInput" class="form-control" rows="4" placeholder="Explain why this proposal is rejected..." required></textarea>
                         <small class="form-text text-muted">This explanation will be shared directly with LGU Vinzons.</small>
                     </div>
                 </div>
@@ -212,13 +212,23 @@ let loadedActivities = [];
 
 async function loadActivities(status = 'Pending') {
     currentStatusFilter = status;
+    const token = localStorage.getItem('token');
+    if (!token) {
+        window.location.href = '/index.html';
+        return;
+    }
+
     const body = document.getElementById('activitiesTableBody');
     body.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm text-primary me-2"></div>Loading activities...</td></tr>`;
 
     try {
-        const res = await fetch(`/api/admin/activities/list?status=${encodeURIComponent(status)}`);
+        const res = await fetch(`/api/admin/activities/list?status=${encodeURIComponent(status)}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
         
         if (res.status === 401 || res.status === 403) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
             window.location.href = '/index.html';
             return;
         }
@@ -355,6 +365,7 @@ function openRejectModal(activityId, title) {
 
 document.getElementById('rejectForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const token = localStorage.getItem('token');
 
     const activity_id = document.getElementById('rejectActivityId').value;
     const rejection_reason = document.getElementById('rejectionReasonInput').value.trim();
@@ -367,7 +378,10 @@ document.getElementById('rejectForm').addEventListener('submit', async (e) => {
     try {
         const res = await fetch('/api/admin/activities/evaluate', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({
                 activity_id: activity_id,
                 decision: 'reject',
@@ -384,7 +398,7 @@ document.getElementById('rejectForm').addEventListener('submit', async (e) => {
             showAlert('success', data.message || 'Activity proposal rejected successfully.');
             loadActivities(currentStatusFilter);
         } else {
-            showAlert('danger', data.error || 'Failed to reject proposal.');
+            showAlert('danger', data.error || data.message || 'Failed to reject proposal.');
         }
     } catch (err) {
         console.error('Rejection submit error:', err);
@@ -393,10 +407,14 @@ document.getElementById('rejectForm').addEventListener('submit', async (e) => {
 });
 
 async function evaluateProposalDirect(activity_id, decision) {
+    const token = localStorage.getItem('token');
     try {
         const res = await fetch('/api/admin/activities/evaluate', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({ activity_id, decision })
         });
         const data = await res.json();
@@ -409,7 +427,7 @@ async function evaluateProposalDirect(activity_id, decision) {
             showAlert('success', data.message || 'Activity proposal approved successfully!');
             loadActivities(currentStatusFilter);
         } else {
-            showAlert('danger', data.error || 'Failed to update proposal status.');
+            showAlert('danger', data.error || data.message || 'Failed to update proposal status.');
         }
     } catch (err) {
         console.error('Proposal decision error:', err);
@@ -447,8 +465,9 @@ function escapeHtml(str) {
     return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
-document.getElementById('logoutBtn').addEventListener('click', async () => {
-    await fetch('/api/auth/logout');
+document.getElementById('logoutBtn').addEventListener('click', () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     window.location.href = '/index.html';
 });
 
