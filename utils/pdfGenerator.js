@@ -30,72 +30,72 @@ async function generateCertificatePDF(certData) {
 
             // --- 2. HEADER & INSTITUTIONAL BRANDING ---
             doc.fillColor('#1a252f').font('Helvetica-Bold').fontSize(12)
-               .text('OUR LADY OF LOURDES COLLEGE FOUNDATION', 0, 50, { align: 'center' });
+               .text('OUR LADY OF LOURDES COLLEGE FOUNDATION', 0, 48, { align: 'center' });
 
             doc.fillColor('#6c757d').font('Helvetica').fontSize(9)
-               .text('Daet, Camarines Norte • Office of Extension Services & Community Involvement', 0, 67, { align: 'center' });
+               .text('Daet, Camarines Norte • Office of Extension Services & Community Involvement', 0, 65, { align: 'center' });
 
             doc.fillColor('#0d6efd').font('Helvetica-Bold').fontSize(10)
-               .text('IN PARTNERSHIP WITH LGU VINZONS, CAMARINES NORTE', 0, 81, { align: 'center' });
+               .text('IN PARTNERSHIP WITH LGU VINZONS, CAMARINES NORTE', 0, 79, { align: 'center' });
 
-            doc.moveTo(150, 98).lineTo(width - 150, 98).lineWidth(1).strokeColor('#dee2e6').stroke();
+            doc.moveTo(150, 96).lineTo(width - 150, 96).lineWidth(1).strokeColor('#dee2e6').stroke();
 
             // --- 3. CERTIFICATE TITLE ---
             doc.fillColor('#0a58ca').font('Helvetica-Bold').fontSize(26)
-               .text('CERTIFICATE OF COMPLETION', 0, 112, { align: 'center' });
+               .text('CERTIFICATE OF COMPLETION', 0, 108, { align: 'center' });
 
             doc.fillColor('#495057').font('Helvetica-Oblique').fontSize(11)
-               .text('This certificate is proudly presented to', 0, 148, { align: 'center' });
+               .text('This certificate is proudly presented to', 0, 142, { align: 'center' });
 
             // --- 4. STUDENT NAME & PROGRAM ---
             const studentNameUpper = (certData.studentName || 'STUDENT VOLUNTEER').toUpperCase();
             doc.fillColor('#000000').font('Helvetica-Bold').fontSize(22)
-               .text(studentNameUpper, 0, 170, { align: 'center' });
+               .text(studentNameUpper, 0, 164, { align: 'center' });
 
-            doc.moveTo(220, 196).lineTo(width - 220, 196).lineWidth(1.5).strokeColor('#0d6efd').stroke();
+            doc.moveTo(220, 190).lineTo(width - 220, 190).lineWidth(1.5).strokeColor('#0d6efd').stroke();
 
             doc.fillColor('#6c757d').font('Helvetica-Bold').fontSize(10)
-               .text(`Academic Program: ${certData.course || 'OLLCF Student'}`, 0, 204, { align: 'center' });
+               .text(`Academic Program: ${certData.course || 'OLLCF Student'}`, 0, 198, { align: 'center' });
 
             // --- 5. CITATION & SERVICE HOURS ---
             doc.fillColor('#212529').font('Helvetica').fontSize(10.5)
                .text(
                    'for actively participating in and successfully completing the required service hours for the community extension program entitled:',
-                   100, 228, { align: 'center', width: width - 200 }
+                   100, 222, { align: 'center', width: width - 200 }
                );
 
             doc.fillColor('#0d6efd').font('Helvetica-Bold').fontSize(15)
-               .text(`"${certData.activityTitle || 'Community Extension Project'}"`, 80, 256, { align: 'center', width: width - 160 });
+               .text(`"${certData.activityTitle || 'Community Extension Project'}"`, 80, 250, { align: 'center', width: width - 160 });
 
             doc.fillColor('#495057').font('Helvetica').fontSize(10)
                .text(
                    `conducted at ${certData.location || 'Vinzons, Camarines Norte'} on ${certData.targetDate || 'N/A'}, rendering a total of`,
-                   100, 284, { align: 'center', width: width - 200 }
+                   100, 278, { align: 'center', width: width - 200 }
                );
 
             const hoursVal = parseFloat(certData.hoursRendered || 0).toFixed(2);
             doc.fillColor('#198754').font('Helvetica-Bold').fontSize(12.5)
-               .text(`${hoursVal} Validated Community Service Hours`, 0, 302, { align: 'center' });
+               .text(`${hoursVal} Validated Community Service Hours`, 0, 296, { align: 'center' });
 
             // --- 6. QR CODE VERIFICATION ---
             try {
                 const qrUrl = `https://collabnet-live.onrender.com/verify-certificate/${certData.certNo}`;
                 const qrDataUrl = await QRCode.toDataURL(qrUrl);
-                doc.image(qrDataUrl, 50, 420, { fit: [75, 75] });
+                doc.image(qrDataUrl, 50, 400, { fit: [75, 75] });
             } catch (e) {
                 console.warn('QR Code generation skipped:', e.message);
             }
 
             doc.fillColor('#495057').font('Helvetica-Bold').fontSize(8)
-               .text(`Ref. No: ${certData.certNo}`, 40, 502, { width: 95, align: 'center' });
+               .text(`Ref. No: ${certData.certNo}`, 40, 480, { width: 95, align: 'center' });
             doc.font('Helvetica').fontSize(7)
-               .text('Scan QR to verify on CollabNet', 40, 514, { width: 95, align: 'center' });
+               .text('Scan QR to verify on CollabNet', 40, 492, { width: 95, align: 'center' });
 
-            // --- 7. SIGNATURE BLOCKS WITH INDIVIDUAL NAMES & TITLES ---
-            const sigLineY = 455;
-            const nameY = 462;
-            const titleY = 476;
-            const subTextY = 490;
+            // --- 7. SIGNATURE BLOCKS (NAMES ABOVE THE LINE) ---
+            const nameY = 458;      // Name rendered ABOVE line
+            const sigLineY = 473;   // Signature line position
+            const titleY = 478;     // Official Title BELOW line
+            const subTextY = 492;   // Institution Subtext BELOW line
 
             // Signature Block 1: Municipal Mayor (Left Column)
             const col1X = 175;
