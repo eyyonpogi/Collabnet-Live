@@ -60,13 +60,16 @@ app.get('/api/public/verify-certificate/:cert_no', async (req, res) => {
     const { cert_no } = req.params;
 
     try {
+        // Extract raw numeric participant_id if cert_no follows format 'CERT-YYYY-00070' or '70'
+        const numericIdMatch = cert_no.match(/\d+$/);
+        const extractedId = numericIdMatch ? parseInt(numericIdMatch[0], 10) : null;
+
         const query = `
             SELECT 
                 p.participant_id,
-                p.certificate_no,
                 p.hours_rendered,
-                p.verified_at,
-                p.certificate_issued,
+                p.target_reached,
+                p.early_out_reason,
                 u.full_name AS student_name,
                 u.course,
                 u.student_id,
@@ -79,10 +82,10 @@ app.get('/api/public/verify-certificate/:cert_no', async (req, res) => {
             JOIN users u ON p.user_id = u.user_id
             JOIN programs_activities a ON p.activity_id = a.activity_id
             LEFT JOIN lgu_departments d ON a.dept_id = d.dept_id
-            WHERE p.certificate_no = $1 OR p.participant_id::text = $1
+            WHERE p.participant_id = $1 OR p.participant_id::text = $2
         `;
         
-        const result = await db.query(query, [cert_no]);
+        const result = await db.query(query, [extractedId, cert_no]);
 
         if (result.rows.length === 0) {
             return res.status(404).json({ 
@@ -94,11 +97,26 @@ app.get('/api/public/verify-certificate/:cert_no', async (req, res) => {
 
         const record = result.rows[0];
 
+        // Check if student completed hours or target was reached
+        const rendered = parseFloat(record.hours_rendered || 0);
+        const target = parseFloat(record.estimated_hours || 0);
+        const isCompleted = record.target_reached || rendered >= target;
+
+        if (!isCompleted && record.early_out_reason) {
+            return res.status(400).json({
+                success: false,
+                valid: false,
+                message: 'Certificate is invalid: Student timed out early and is ineligible.'
+            });
+        }
+
+        const formattedCertNo = `CERT-2026-${record.participant_id.toString().padStart(5, '0')}`;
+
         return res.json({
             success: true,
             valid: true,
             certificate: {
-                certNo: record.certificate_no || `CERT-2026-${record.participant_id}`,
+                certNo: formattedCertNo,
                 studentName: record.student_name,
                 course: record.course,
                 studentId: record.student_id,
@@ -106,8 +124,7 @@ app.get('/api/public/verify-certificate/:cert_no', async (req, res) => {
                 department: record.dept_name || 'LGU Vinzons',
                 location: record.location || 'Vinzons, Camarines Norte',
                 targetDate: record.target_date ? new Date(record.target_date).toISOString().split('T')[0] : 'N/A',
-                hoursRendered: parseFloat(record.hours_rendered || record.estimated_hours || 0),
-                issuedAt: record.verified_at ? new Date(record.verified_at).toLocaleDateString() : 'Official Issue'
+                hoursRendered: parseFloat(record.hours_rendered || record.estimated_hours || 0)
             }
         });
 
