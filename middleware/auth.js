@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 
-// 1. Verify JWT Token
+// 1. Core Token Verification Middleware
 const verifyToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     
@@ -16,17 +16,17 @@ const verifyToken = (req, res, next) => {
 
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_default_jwt_secret');
-        req.user = decoded;
+        req.user = decoded; // Contains user_id, role, full_name
         next();
     } catch (err) {
-        return res.status(403).json({ success: false, message: 'Invalid or expired token.' });
+        return res.status(401).json({ success: false, message: 'Invalid or expired session token.' });
     }
 };
 
-// 2. Alias for requireAuth (so both requireAuth and verifyToken work)
+// 2. Alias for requireAuth
 const requireAuth = verifyToken;
 
-// 3. Middleware to check specific user roles (e.g. Admin, Student, LGU)
+// 3. Role Checking Middleware
 const requireRole = (role) => {
     return (req, res, next) => {
         if (!req.user || req.user.role !== role) {
