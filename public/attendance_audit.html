@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CollabNet Portal - Attendance & Certificates</title>
+    <title>CollabNet Portal - Attendance & Certificates Audit</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -76,7 +76,7 @@
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <div>
                     <h3 class="fw-bold mb-1 text-dark">Student Attendance & Certificate Audit</h3>
-                    <p class="text-muted small mb-0">Inspect student attendance logs, verify rendered extension hours, and issue official certificates.</p>
+                    <p class="text-muted small mb-0">Inspect student attendance logs, review early out reasons, and enforce certificate eligibility rules.</p>
                 </div>
                 <span class="btn btn-primary fw-bold btn-sm px-3 py-2 shadow-sm pointer-events-none" style="cursor: default;">
                     OLLCF Extension Office
@@ -134,16 +134,15 @@
                         <thead class="table-light text-muted small text-uppercase">
                             <tr>
                                 <th>STUDENT DETAILS</th>
-                                <th>TIME-IN</th>
-                                <th>TIME-OUT</th>
-                                <th>CALCULATED HOURS</th>
-                                <th>STATUS</th>
-                                <th>CERTIFICATE</th>
-                                <th class="text-end">ACTION</th>
+                                <th>TIME-IN / TIME-OUT</th>
+                                <th>RENDERED / TARGET</th>
+                                <th>EARLY OUT REASON</th>
+                                <th>ELIGIBILITY STATUS</th>
+                                <th class="text-end">CERTIFICATE ACTION</th>
                             </tr>
                         </thead>
                         <tbody id="auditTableBody">
-                            <tr><td colspan="7" class="text-center text-muted py-4">Select an extension activity above to view student logs.</td></tr>
+                            <tr><td colspan="6" class="text-center text-muted py-4">Select an extension activity above to view student logs.</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -238,16 +237,18 @@ async function loadAuditLogs(activityId) {
         const body = document.getElementById('auditTableBody');
 
         if (participants.length === 0) {
-            body.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-4">No student volunteers have joined this activity yet.</td></tr>`;
+            body.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4">No student volunteers have joined this activity yet.</td></tr>`;
             return;
         }
 
         body.innerHTML = participants.map(p => {
-            const hasIn = Boolean(p.formatted_time_in);
-            const hasOut = Boolean(p.formatted_time_out);
+            const hasIn = Boolean(p.formatted_time_in || p.time_in);
+            const hasOut = Boolean(p.formatted_time_out || p.time_out);
             const rendered = parseFloat(p.hours_rendered || 0);
-            const target = parseFloat(p.target_hours || 0);
-            const reached = p.target_reached === true || rendered >= target;
+            const target = parseFloat(p.target_hours || act.estimated_hours || 0);
+            
+            // Certificate Eligibility Check: Requires target hours completed and no forced early-out disqualification
+            const isEligible = p.is_eligible_for_cert === true || (p.target_reached === true && rendered >= target);
             const isAwarded = p.certificate_issued === true || p.status === 'Completed';
 
             const formatTime = (iso) => {
@@ -256,13 +257,18 @@ async function loadAuditLogs(activityId) {
                 return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
             };
 
+            let eligibilityBadge = '';
             let actionBtn = '';
+
             if (isAwarded) {
+                eligibilityBadge = `<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1"><i class="bi bi-patch-check-fill me-1"></i>Awarded</span>`;
                 actionBtn = `<button class="btn btn-sm btn-outline-secondary py-1 px-2 fw-semibold" style="font-size: 0.75rem;" disabled><i class="bi bi-check2-all me-1"></i> Verified</button>`;
-            } else if (hasIn && hasOut) {
-                actionBtn = `<button onclick="awardCertificate(${p.participant_id}, ${activityId})" class="btn btn-sm btn-success fw-bold py-1 px-2" style="font-size: 0.75rem;"><i class="bi bi-award me-1"></i> Award Certificate & Hours</button>`;
+            } else if (isEligible && hasIn && hasOut) {
+                eligibilityBadge = `<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1"><i class="bi bi-check-circle-fill me-1"></i>Eligible</span>`;
+                actionBtn = `<button onclick="awardCertificate(${p.participant_id}, ${activityId})" class="btn btn-sm btn-success fw-bold py-1 px-2" style="font-size: 0.75rem;"><i class="bi bi-award me-1"></i> Issue Certificate</button>`;
             } else {
-                actionBtn = `<button class="btn btn-sm btn-secondary py-1 px-2 opacity-50 fw-semibold" style="font-size: 0.75rem;" disabled title="Student must complete Time-In and Time-Out first"><i class="bi bi-lock-fill me-1"></i> Incomplete Attendance</button>`;
+                eligibilityBadge = `<span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 px-2 py-1"><i class="bi bi-x-circle-fill me-1"></i>Ineligible</span>`;
+                actionBtn = `<button class="btn btn-sm btn-secondary py-1 px-2 opacity-50 fw-semibold" style="font-size: 0.75rem;" disabled title="Target hours not reached or early out recorded"><i class="bi bi-lock-fill me-1"></i> Not Eligible</button>`;
             }
 
             return `
@@ -272,24 +278,23 @@ async function loadAuditLogs(activityId) {
                         <small class="text-muted">${p.email} (ID: ${p.student_id || 'N/A'})</small>
                     </td>
                     <td>
-                        ${hasIn ? `<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1"><i class="bi bi-clock me-1"></i>${formatTime(p.formatted_time_in)}</span>` : `<span class="text-muted small"><i class="bi bi-dash-circle me-1"></i>No Time-In</span>`}
+                        <small class="d-block text-success fw-semibold">In: ${hasIn ? formatTime(p.formatted_time_in || p.time_in) : '--:--'}</small>
+                        <small class="d-block text-info fw-semibold">Out: ${hasOut ? formatTime(p.formatted_time_out || p.time_out) : '--:--'}</small>
                     </td>
                     <td>
-                        ${hasOut ? `<span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 px-2 py-1"><i class="bi bi-clock-history me-1"></i>${formatTime(p.formatted_time_out)}</span>` : `<span class="text-muted small"><i class="bi bi-dash-circle me-1"></i>No Time-Out</span>`}
+                        <span class="badge ${isEligible ? 'bg-success' : 'bg-warning text-dark'} px-2 py-1">
+                            ${rendered.toFixed(2)} / ${target.toFixed(2)} hrs
+                        </span>
                     </td>
                     <td>
-                        ${hasIn && hasOut 
-                            ? `<span class="badge ${reached ? 'bg-success' : 'bg-warning text-dark'} px-2 py-1">${rendered.toFixed(2)} / ${target.toFixed(2)} hrs</span>` 
-                            : `<span class="badge bg-success px-2 py-1">0.00 / ${target.toFixed(2)} hrs</span>`}
+                        ${p.early_out_reason ? `
+                            <div class="alert alert-warning py-1 px-2 mb-0" style="font-size: 0.75rem; max-width: 220px;">
+                                <i class="bi bi-exclamation-circle-fill me-1 text-warning-emphasis"></i>
+                                <strong>Reason:</strong> ${p.early_out_reason}
+                            </div>
+                        ` : '<span class="text-muted small">N/A (Full Duration)</span>'}
                     </td>
-                    <td>
-                        <span class="badge bg-secondary bg-opacity-75 px-2 py-1" style="font-weight: 500;">${p.status || 'Registered'}</span>
-                    </td>
-                    <td>
-                        ${isAwarded 
-                            ? `<span class="text-success fw-bold small"><i class="bi bi-patch-check-fill me-1"></i>Awarded</span>` 
-                            : `<span class="text-muted small"><i class="bi bi-hourglass me-1"></i>Pending Verification</span>`}
-                    </td>
+                    <td>${eligibilityBadge}</td>
                     <td class="text-end">${actionBtn}</td>
                 </tr>
             `;
