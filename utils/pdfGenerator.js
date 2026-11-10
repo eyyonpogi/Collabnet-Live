@@ -100,9 +100,9 @@ async function generateCertificatePDF(certData) {
             // Signature Block 1: Municipal Mayor (Left Column)
             const col1X = 175;
             const col1Width = 170;
-            doc.moveTo(col1X, sigLineY).lineTo(col1X + col1Width, sigLineY).lineWidth(1).strokeColor('#495057').stroke();
             doc.fillColor('#000000').font('Helvetica-Bold').fontSize(10)
-               .text(certData.mayorName || 'HON. DR. ELEANOR F. BUEZA', col1X, nameY, { width: col1Width, align: 'center' });
+               .text(certData.mayorName || 'HON. AGNES ANG', col1X, nameY, { width: col1Width, align: 'center' });
+            doc.moveTo(col1X, sigLineY).lineTo(col1X + col1Width, sigLineY).lineWidth(1).strokeColor('#495057').stroke();
             doc.fillColor('#212529').font('Helvetica-Bold').fontSize(8.5)
                .text('Municipal Mayor', col1X, titleY, { width: col1Width, align: 'center' });
             doc.fillColor('#6c757d').font('Helvetica').fontSize(7.5)
@@ -111,9 +111,9 @@ async function generateCertificatePDF(certData) {
             // Signature Block 2: Extension Services Director (Center Column)
             const col2X = 385;
             const col2Width = 180;
-            doc.moveTo(col2X, sigLineY).lineTo(col2X + col2Width, sigLineY).lineWidth(1).strokeColor('#495057').stroke();
             doc.fillColor('#000000').font('Helvetica-Bold').fontSize(10)
-               .text(certData.directorName || 'PROF. ENGR. ARON V. PESEMBRE', col2X, nameY, { width: col2Width, align: 'center' });
+               .text(certData.directorName || 'JAMES LOPEZ', col2X, nameY, { width: col2Width, align: 'center' });
+            doc.moveTo(col2X, sigLineY).lineTo(col2X + col2Width, sigLineY).lineWidth(1).strokeColor('#495057').stroke();
             doc.fillColor('#212529').font('Helvetica-Bold').fontSize(8.5)
                .text('Extension Services Director', col2X, titleY, { width: col2Width, align: 'center' });
             doc.fillColor('#6c757d').font('Helvetica').fontSize(7.5)
@@ -122,9 +122,9 @@ async function generateCertificatePDF(certData) {
             // Signature Block 3: VP for Academic Affairs (Right Column)
             const col3X = 605;
             const col3Width = 170;
-            doc.moveTo(col3X, sigLineY).lineTo(col3X + col3Width, sigLineY).lineWidth(1).strokeColor('#495057').stroke();
             doc.fillColor('#000000').font('Helvetica-Bold').fontSize(10)
-               .text(certData.vpName || 'DR. MARIA TERESA S. REYES', col3X, nameY, { width: col3Width, align: 'center' });
+               .text(certData.vpName || 'ACE VINCENT BALMEO', col3X, nameY, { width: col3Width, align: 'center' });
+            doc.moveTo(col3X, sigLineY).lineTo(col3X + col3Width, sigLineY).lineWidth(1).strokeColor('#495057').stroke();
             doc.fillColor('#212529').font('Helvetica-Bold').fontSize(8.5)
                .text('VP for Academic Affairs', col3X, titleY, { width: col3Width, align: 'center' });
             doc.fillColor('#6c757d').font('Helvetica').fontSize(7.5)
