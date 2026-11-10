@@ -4,19 +4,12 @@ const db = require('../db');
 const { verifyToken } = require('../middleware/auth');
 const { generateCertificatePDF } = require('../utils/pdfGenerator');
 
-// GET: Fetch Student Dashboard Metrics & Recent Activities
+// GET: Fetch Student Dashboard Metrics & Recent Activities (No Notifications)
 router.get('/dashboard', verifyToken, async (req, res) => {
     const user_id = req.user.user_id;
 
     try {
-        // 1. Calculate Unread Notifications Count
-        const unreadRes = await db.query(
-            `SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND is_read = FALSE`,
-            [user_id]
-        );
-        const unreadCount = parseInt(unreadRes.rows[0].count, 10) || 0;
-
-        // 2. Calculate Service Hours & Joined Count
+        // 1. Calculate Service Hours & Joined Count
         const statsRes = await db.query(
             `SELECT 
                 COUNT(*) AS joined_count,
@@ -27,11 +20,11 @@ router.get('/dashboard', verifyToken, async (req, res) => {
         );
         const stats = statsRes.rows[0];
 
-        // 3. Fetch Recent Activities with Join & Attendance Status
+        // 2. Fetch Recent Activities with Join & Attendance Status
         const activitiesRes = await db.query(
             `SELECT a.activity_id, a.title, a.target_date, a.description, a.status, a.estimated_hours,
                     (p.participant_id IS NOT NULL) AS is_joined,
-                    p.hours_rendered, p.target_reached, p.is_eligible_for_cert, p.certificate_issued,
+                    p.hours_rendered, p.target_reached,
                     COALESCE(p.time_in, p.time_in_at) AS formatted_time_in,
                     COALESCE(p.time_out, p.time_out_at) AS formatted_time_out
              FROM programs_activities a
@@ -44,7 +37,6 @@ router.get('/dashboard', verifyToken, async (req, res) => {
         return res.json({
             success: true,
             user_name: req.user.full_name,
-            unread_count: unreadCount,
             total_hours: parseFloat(stats.total_hours || 0),
             joined_count: parseInt(stats.joined_count || 0, 10),
             activities: activitiesRes.rows
@@ -138,7 +130,7 @@ router.get('/activities', verifyToken, async (req, res) => {
     }
 });
 
-// POST: Join or Leave an Extension Activity with Schedule Conflict Prevention
+// POST: Join or Leave an Extension Activity
 router.post('/activities/join', verifyToken, async (req, res) => {
     const { activity_id, action } = req.body;
     const user_id = req.user.user_id;
@@ -214,8 +206,6 @@ router.get('/attendance-list', verifyToken, async (req, res) => {
                 p.hours_rendered,
                 p.target_reached,
                 p.early_out_reason,
-                p.is_eligible_for_cert,
-                p.certificate_issued,
                 COALESCE(p.time_in, p.time_in_at) AS time_in,
                 COALESCE(p.time_out, p.time_out_at) AS time_out
             FROM activity_participants p
@@ -281,7 +271,7 @@ router.post('/time-in', verifyToken, async (req, res) => {
     }
 });
 
-// POST: Time-Out Venue PIN Submission with Early Out Detection & Reason Validation
+// POST: Time-Out Venue PIN Submission with Early Out Detection
 router.post('/time-out', verifyToken, async (req, res) => {
     const { activity_id, pin, early_out_reason } = req.body;
     const user_id = req.user.user_id;
@@ -339,7 +329,6 @@ router.post('/time-out', verifyToken, async (req, res) => {
             });
         }
 
-        const isEligibleForCert = targetReached;
         const finalReason = targetReached ? null : early_out_reason.trim();
 
         await db.query(
@@ -349,10 +338,9 @@ router.post('/time-out', verifyToken, async (req, res) => {
                  time_out_at = CURRENT_TIMESTAMP,
                  hours_rendered = $1,
                  target_reached = $2,
-                 early_out_reason = $3,
-                 is_eligible_for_cert = $4
+                 early_out_reason = $3
              WHERE participant_id = $5`,
-            [hoursRendered, targetReached, finalReason, isEligibleForCert, participant.participant_id]
+            [hoursRendered, targetReached, finalReason, participant.participant_id]
         );
 
         const statusMsg = targetReached 
@@ -363,7 +351,6 @@ router.post('/time-out', verifyToken, async (req, res) => {
             success: true,
             hours_rendered: hoursRendered,
             target_reached: targetReached,
-            is_eligible_for_cert: isEligibleForCert,
             message: `Time-Out successfully recorded! ${statusMsg}`
         });
 
@@ -382,11 +369,8 @@ router.get('/certificate/download/:participant_id', verifyToken, async (req, res
         const certQuery = `
             SELECT 
                 p.participant_id,
-                p.certificate_no,
                 p.hours_rendered,
                 p.target_reached,
-                p.is_eligible_for_cert,
-                p.certificate_issued,
                 u.full_name AS student_name,
                 u.course,
                 a.title AS activity_title,
@@ -406,13 +390,8 @@ router.get('/certificate/download/:participant_id', verifyToken, async (req, res
 
         const record = result.rows[0];
 
-        const isEligible = record.certificate_issued === true || record.is_eligible_for_cert === true || record.target_reached === true;
-        if (!isEligible) {
-            return res.status(403).send('Certificate is not yet issued or student is ineligible due to incomplete hours/early out.');
-        }
-
         const certData = {
-            certNo: record.certificate_no || `CERT-2026-${record.participant_id.toString().padStart(5, '0')}`,
+            certNo: `CERT-2026-${record.participant_id.toString().padStart(5, '0')}`,
             studentName: record.student_name,
             course: record.course,
             activityTitle: record.activity_title,
@@ -434,4 +413,4 @@ router.get('/certificate/download/:participant_id', verifyToken, async (req, res
     }
 });
 
-module.exports = router;
+module.exports = router;    
