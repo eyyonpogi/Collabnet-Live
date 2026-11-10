@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 
-// Middleware to verify JWT Token
+// 1. Verify JWT Token
 const verifyToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     
@@ -8,7 +8,7 @@ const verifyToken = (req, res, next) => {
         return res.status(401).json({ success: false, message: 'Access denied. No token provided.' });
     }
 
-    const token = authHeader.split(' ')[1]; // Extract token from "Bearer <TOKEN>"
+    const token = authHeader.split(' ')[1];
 
     if (!token) {
         return res.status(401).json({ success: false, message: 'Access denied. Malformed token.' });
@@ -16,11 +16,31 @@ const verifyToken = (req, res, next) => {
 
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_default_jwt_secret');
-        req.user = decoded; // Attaches user payload (user_id, role, full_name) to request
+        req.user = decoded;
         next();
     } catch (err) {
         return res.status(403).json({ success: false, message: 'Invalid or expired token.' });
     }
 };
 
-module.exports = { verifyToken };
+// 2. Alias for requireAuth (so both requireAuth and verifyToken work)
+const requireAuth = verifyToken;
+
+// 3. Middleware to check specific user roles (e.g. Admin, Student, LGU)
+const requireRole = (role) => {
+    return (req, res, next) => {
+        if (!req.user || req.user.role !== role) {
+            return res.status(403).json({ 
+                success: false, 
+                message: `Access denied. Authorized ${role} access required.` 
+            });
+        }
+        next();
+    };
+};
+
+module.exports = { 
+    verifyToken, 
+    requireAuth, 
+    requireRole 
+};
