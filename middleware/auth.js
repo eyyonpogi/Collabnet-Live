@@ -1,35 +1,36 @@
 const jwt = require('jsonwebtoken');
 
-// 1. Core Token Verification Middleware
+const JWT_SECRET = process.env.JWT_SECRET || 'collabnet_secret_key_2026';
+
 const verifyToken = (req, res, next) => {
-    const authHeader = req.headers['authorization'];
+    const authHeader = req.headers['authorization'] || req.headers['Authorization'];
     
     if (!authHeader) {
         return res.status(401).json({ success: false, message: 'Access denied. No token provided.' });
     }
 
-    const token = authHeader.split(' ')[1];
-
-    if (!token) {
-        return res.status(401).json({ success: false, message: 'Access denied. Malformed token.' });
+    const parts = authHeader.split(' ');
+    if (parts.length !== 2 || parts[0] !== 'Bearer') {
+        return res.status(401).json({ success: false, message: 'Access denied. Malformed token format.' });
     }
 
+    const token = parts[1];
+
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_default_jwt_secret');
-        req.user = decoded; // Contains user_id, role, full_name
+        const decoded = jwt.verify(token, JWT_SECRET);
+        req.user = decoded;
         next();
     } catch (err) {
+        console.error('JWT Verification Failed:', err.message);
         return res.status(401).json({ success: false, message: 'Invalid or expired session token.' });
     }
 };
 
-// 2. Alias for requireAuth
 const requireAuth = verifyToken;
 
-// 3. Role Checking Middleware
 const requireRole = (role) => {
     return (req, res, next) => {
-        if (!req.user || req.user.role !== role) {
+        if (!req.user || (req.user.role || '').toLowerCase() !== role.toLowerCase()) {
             return res.status(403).json({ 
                 success: false, 
                 message: `Access denied. Authorized ${role} access required.` 
