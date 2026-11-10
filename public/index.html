@@ -97,26 +97,44 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     }
 
     try {
-       submitBtn.disabled = true;
-submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span> Authenticating...`;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span> Authenticating...`;
 
-const res = await fetch('/api/auth/login', {
-    method: 'POST',
-    headers: { 
-        'Content-Type': 'application/json' 
-    },
-    body: JSON.stringify({ 
-        email: loginInput, 
-        password: passwordInput 
-    })
-});
+        const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json' 
+            },
+            body: JSON.stringify({ 
+                email: loginInput, 
+                password: passwordInput 
+            })
+        });
 
         const data = await res.json();
 
         if (res.ok && data.success) {
-            window.location.href = data.redirectUrl || '/student_dashboard.html';
+            // SAVE JWT TOKEN & USER INFO TO LOCAL STORAGE
+            if (data.token) {
+                localStorage.setItem('token', data.token);
+            }
+            if (data.user) {
+                localStorage.setItem('user', JSON.stringify(data.user));
+            }
+
+            // REDIRECT BASED ON ROLE OR DEFAULT REDIRECT URL
+            const role = (data.user?.role || '').toLowerCase();
+            if (role === 'student') {
+                window.location.href = '/student_dashboard.html';
+            } else if (role === 'admin' || role === 'extension director') {
+                window.location.href = '/admin_dashboard.html';
+            } else if (role === 'lgu' || role === 'agency admin' || role === 'lgu coordinator') {
+                window.location.href = '/lgu_dashboard.html';
+            } else {
+                window.location.href = data.redirectUrl || '/student_dashboard.html';
+            }
         } else {
-            showError(data.error || 'Login failed. Please check your credentials.');
+            showError(data.message || data.error || 'Login failed. Please check your credentials.');
         }
     } catch (err) {
         console.error('Login request failed:', err);
