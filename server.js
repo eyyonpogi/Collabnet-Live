@@ -4,6 +4,7 @@ const express = require('express');
 const session = require('express-session');
 const path = require('path');
 const pool = require('./db');
+const db = pool; // <-- Maps pool to db for endpoint compatibility
 
 const authRoutes = require('./routes/auth');
 const studentRoutes = require('./routes/student');
@@ -52,10 +53,12 @@ app.get('/api/health', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Clean route handler for certificate verification QR scanning
 app.get('/verify-certificate/:cert_no', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'verify-certificate.html'));
 });
-// GET: Public Certificate Verification Endpoint
+
 // GET: Public Certificate Verification Endpoint (Guaranteed Database Compatibility)
 app.get('/api/public/verify-certificate/:cert_no', async (req, res) => {
     const { cert_no } = req.params;
@@ -141,5 +144,6 @@ app.get('/api/public/verify-certificate/:cert_no', async (req, res) => {
         });
     }
 });
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`CollabNet server running on http://localhost:${PORT}`));
