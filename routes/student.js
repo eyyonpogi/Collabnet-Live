@@ -374,7 +374,6 @@ router.post('/time-out', verifyToken, async (req, res) => {
 });
 
 // GET: Download Official Certificate PDF
-r// GET: Download Official Certificate PDF
 router.get('/certificate/download/:participant_id', verifyToken, async (req, res) => {
     const user_id = req.user.user_id;
     const { participant_id } = req.params;
@@ -406,6 +405,11 @@ router.get('/certificate/download/:participant_id', verifyToken, async (req, res
         }
 
         const record = result.rows[0];
+
+        const isEligible = record.certificate_issued === true || record.is_eligible_for_cert === true || record.target_reached === true;
+        if (!isEligible) {
+            return res.status(403).send('Certificate is not yet issued or student is ineligible due to incomplete hours/early out.');
+        }
 
         const certData = {
             certNo: record.certificate_no || `CERT-2026-${record.participant_id.toString().padStart(5, '0')}`,
