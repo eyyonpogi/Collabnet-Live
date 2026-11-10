@@ -360,7 +360,7 @@ router.post('/time-out', verifyToken, async (req, res) => {
     }
 });
 
-// GET: Download Official Certificate PDF
+// GET: Download Official Certificate PDF & Persist Certificate Number
 router.get('/certificate/download/:participant_id', verifyToken, async (req, res) => {
     const user_id = req.user.user_id;
     const { participant_id } = req.params;
@@ -369,6 +369,7 @@ router.get('/certificate/download/:participant_id', verifyToken, async (req, res
         const certQuery = `
             SELECT 
                 p.participant_id,
+                p.certificate_no,
                 p.hours_rendered,
                 p.target_reached,
                 u.full_name AS student_name,
@@ -390,8 +391,22 @@ router.get('/certificate/download/:participant_id', verifyToken, async (req, res
 
         const record = result.rows[0];
 
+        // 1. Generate or reuse certificate number
+        let certNo = record.certificate_no;
+        if (!certNo) {
+            certNo = `CERT-2026-${record.participant_id.toString().padStart(5, '0')}`;
+            
+            // 2. SAVE/UPDATE certificate_no in PostgreSQL database
+            await db.query(
+                `UPDATE activity_participants 
+                 SET certificate_no = $1, certificate_issued = TRUE 
+                 WHERE participant_id = $2`,
+                [certNo, participant_id]
+            );
+        }
+
         const certData = {
-            certNo: `CERT-2026-${record.participant_id.toString().padStart(5, '0')}`,
+            certNo: certNo,
             studentName: record.student_name,
             course: record.course,
             activityTitle: record.activity_title,
