@@ -3,18 +3,25 @@ const jwt = require('jsonwebtoken');
 const JWT_SECRET = process.env.JWT_SECRET || 'collabnet_secret_key_2026';
 
 const verifyToken = (req, res, next) => {
+    // 1. Inspect Authorization Header first
     const authHeader = req.headers['authorization'] || req.headers['Authorization'];
+    let token = null;
+
+    if (authHeader) {
+        const parts = authHeader.split(' ');
+        if (parts.length === 2 && parts[0] === 'Bearer') {
+            token = parts[1];
+        }
+    }
+
+    // 2. Fallback to Query Parameter (?token=...) for Direct Link File Downloads
+    if (!token && req.query && req.query.token) {
+        token = req.query.token;
+    }
     
-    if (!authHeader) {
+    if (!token) {
         return res.status(401).json({ success: false, message: 'Access denied. No token provided.' });
     }
-
-    const parts = authHeader.split(' ');
-    if (parts.length !== 2 || parts[0] !== 'Bearer') {
-        return res.status(401).json({ success: false, message: 'Access denied. Malformed token format.' });
-    }
-
-    const token = parts[1];
 
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
@@ -44,4 +51,4 @@ module.exports = {
     verifyToken, 
     requireAuth, 
     requireRole 
-};
+};  

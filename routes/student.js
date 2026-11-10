@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { verifyToken } = require('../middleware/auth');
+const { generateCertificatePDF } = require('../utils/pdfGenerator');
 
 // GET: Fetch Student Dashboard Metrics & Recent Activities
 router.get('/dashboard', verifyToken, async (req, res) => {
@@ -30,7 +31,7 @@ router.get('/dashboard', verifyToken, async (req, res) => {
         const activitiesRes = await db.query(
             `SELECT a.activity_id, a.title, a.target_date, a.description, a.status, a.estimated_hours,
                     (p.participant_id IS NOT NULL) AS is_joined,
-                    p.hours_rendered, p.target_reached, p.is_eligible_for_cert,
+                    p.hours_rendered, p.target_reached, p.is_eligible_for_cert, p.certificate_issued,
                     COALESCE(p.time_in, p.time_in_at) AS formatted_time_in,
                     COALESCE(p.time_out, p.time_out_at) AS formatted_time_out
              FROM programs_activities a
@@ -59,7 +60,6 @@ router.get('/profile', verifyToken, async (req, res) => {
     const user_id = req.user.user_id;
 
     try {
-        // 1. Fetch Student User Details
         const userRes = await db.query(
             `SELECT user_id, full_name, email, student_id, course, verification_status 
              FROM users WHERE user_id = $1`,
@@ -72,7 +72,6 @@ router.get('/profile', verifyToken, async (req, res) => {
 
         const user = userRes.rows[0];
 
-        // 2. Compute Aggregated Volunteer Metrics
         const statsRes = await db.query(
             `SELECT 
                 COUNT(*) AS joined_count,
@@ -157,7 +156,6 @@ router.post('/activities/join', verifyToken, async (req, res) => {
             return res.json({ success: true, message: 'Successfully left the activity.' });
         }
 
-        // 1. Fetch Target Activity Date
         const targetActRes = await db.query(
             `SELECT activity_id, title, target_date FROM programs_activities WHERE activity_id = $1`,
             [activity_id]
@@ -168,7 +166,6 @@ router.post('/activities/join', verifyToken, async (req, res) => {
         const targetAct = targetActRes.rows[0];
         const targetDate = new Date(targetAct.target_date).toISOString().split('T')[0];
 
-        // 2. Schedule Conflict Check (Check if student is already joined in another activity on the same date)
         const conflictRes = await db.query(
             `SELECT a.title 
              FROM activity_participants p
@@ -186,7 +183,6 @@ router.post('/activities/join', verifyToken, async (req, res) => {
             });
         }
 
-        // 3. Register Student for Activity
         await db.query(
             `INSERT INTO activity_participants (activity_id, user_id) 
              VALUES ($1, $2)
@@ -219,6 +215,7 @@ router.get('/attendance-list', verifyToken, async (req, res) => {
                 p.target_reached,
                 p.early_out_reason,
                 p.is_eligible_for_cert,
+                p.certificate_issued,
                 COALESCE(p.time_in, p.time_in_at) AS time_in,
                 COALESCE(p.time_out, p.time_out_at) AS time_out
             FROM activity_participants p
@@ -294,7 +291,6 @@ router.post('/time-out', verifyToken, async (req, res) => {
     }
 
     try {
-        // 1. Fetch Activity & Verification Passcode
         const actResult = await db.query(
             `SELECT activity_id, title, estimated_hours, time_out_passcode 
              FROM programs_activities WHERE activity_id = $1`,
@@ -310,7 +306,6 @@ router.post('/time-out', verifyToken, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid Time-Out PIN! Please ask the venue coordinator.' });
         }
 
-        // 2. Fetch Participant Record
         const partResult = await db.query(
             `SELECT participant_id, COALESCE(time_in, time_in_at) AS time_in 
              FROM activity_participants WHERE activity_id = $1 AND user_id = $2`,
@@ -326,7 +321,6 @@ router.post('/time-out', verifyToken, async (req, res) => {
             return res.status(400).json({ success: false, message: 'You must Time-In first before logging Time-Out.' });
         }
 
-        // 3. Compute Elapsed Service Hours
         const timeInDate = new Date(participant.time_in);
         const timeOutDate = new Date();
         const diffInMs = timeOutDate - timeInDate;
@@ -335,7 +329,6 @@ router.post('/time-out', verifyToken, async (req, res) => {
 
         const targetReached = hoursRendered >= targetHours;
 
-        // 4. Check early out validation requirement
         if (!targetReached && (!early_out_reason || early_out_reason.trim() === '')) {
             return res.status(400).json({ 
                 success: false, 
@@ -346,7 +339,6 @@ router.post('/time-out', verifyToken, async (req, res) => {
             });
         }
 
-        // 5. Save Time-Out Log & Eligibility Status
         const isEligibleForCert = targetReached;
         const finalReason = targetReached ? null : early_out_reason.trim();
 
@@ -380,7 +372,6 @@ router.post('/time-out', verifyToken, async (req, res) => {
         return res.status(500).json({ success: false, message: 'Server error logging Time-Out.' });
     }
 });
-const { generateCertificatePDF } = require('../utils/pdfGenerator');
 
 // GET: Download Official Certificate PDF
 router.get('/certificate/download/:participant_id', verifyToken, async (req, res) => {
@@ -388,7 +379,6 @@ router.get('/certificate/download/:participant_id', verifyToken, async (req, res
     const { participant_id } = req.params;
 
     try {
-        // Query participant verification and activity details
         const certQuery = `
             SELECT 
                 p.participant_id,
@@ -416,13 +406,14 @@ router.get('/certificate/download/:participant_id', verifyToken, async (req, res
 
         const record = result.rows[0];
 
-        // Check eligibility rules
-        if (!record.is_eligible_for_cert || !record.certificate_issued) {
+        // Ensure student completed target hours or certificate was issued
+        const isEligible = record.certificate_issued === true || record.is_eligible_for_cert === true || record.target_reached === true;
+        if (!isEligible) {
             return res.status(403).send('Certificate is not yet issued or student is ineligible due to incomplete hours/early out.');
         }
 
         const certData = {
-            certNo: record.certificate_no || `CERT-${new Date().getFullYear()}-${record.participant_id.toString().padStart(5, '0')}`,
+            certNo: record.certificate_no || `CERT-2026-${record.participant_id.toString().padStart(5, '0')}`,
             studentName: record.student_name,
             course: record.course,
             activityTitle: record.activity_title,
@@ -435,7 +426,7 @@ router.get('/certificate/download/:participant_id', verifyToken, async (req, res
         const pdfBuffer = await generateCertificatePDF(certData);
 
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename=Certificate_${certData.certNo}.pdf`);
+        res.setHeader('Content-Disposition', `inline; filename=Certificate_${certData.certNo}.pdf`);
         res.send(pdfBuffer);
 
     } catch (err) {

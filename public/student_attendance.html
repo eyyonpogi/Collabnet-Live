@@ -195,7 +195,7 @@
                 const rendered = parseFloat(act.hours_rendered || 0);
                 const target = parseFloat(act.estimated_hours || 0);
                 
-                // Certification Eligibility: Rendered hours >= target AND no early-out disqualification
+                // Certification Eligibility: Rendered hours >= target OR explicitly flagged by admin/system
                 const targetReached = act.target_reached === true || (rendered >= target && target > 0) || act.is_eligible_for_cert === true;
                 const isCertIssued = act.certificate_issued === true || targetReached;
                 
@@ -215,15 +215,15 @@
                     statusBadge = `<span class="badge bg-secondary rounded-pill" style="font-size: 0.65rem;">Joined</span>`;
                 }
 
-                // Dedicated Certificate Download Button / Download Bar
+                // Dedicated Certificate Download Button Bar
                 let certDownloadSection = '';
-                if (hasIn && hasOut && targetReached) {
+                if (hasIn && hasOut && isCertIssued) {
                     certDownloadSection = `
                         <div class="mt-2 pt-2 border-top d-flex justify-content-between align-items-center bg-success bg-opacity-10 p-2 rounded-3 border border-success border-opacity-25">
                             <span class="text-success fw-bold small" style="font-size: 0.73rem;">
                                 <i class="bi bi-patch-check-fill me-1"></i>Official Certificate Ready
                             </span>
-                            <a href="/api/student/certificate/download/${act.participant_id}?token=${token}" 
+                            <a href="/api/student/certificate/download/${act.participant_id}?token=${encodeURIComponent(token)}" 
                                target="_blank" 
                                class="btn btn-sm btn-success fw-bold px-3 py-1 shadow-sm" 
                                style="font-size: 0.72rem;">
