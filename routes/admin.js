@@ -324,5 +324,59 @@ router.get('/activities/list', async (req, res) => {
     res.status(500).json({ error: 'Failed to retrieve extension activities.', details: err.message });
   }
 });
+// POST: Admin Issue & Generate Certificate Number
+router.post('/issue-certificate', verifyToken, async (req, res) => {
+    const { participant_id } = req.body;
+
+    if (!participant_id) {
+        return res.status(400).json({ success: false, message: 'Participant ID is required.' });
+    }
+
+    try {
+        const query = `
+            SELECT p.participant_id, p.hours_rendered, p.target_reached, a.estimated_hours, u.full_name
+            FROM activity_participants p
+            JOIN programs_activities a ON p.activity_id = a.activity_id
+            JOIN users u ON p.user_id = u.user_id
+            WHERE p.participant_id = $1
+        `;
+        const result = await db.query(query, [participant_id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Participant record not found.' });
+        }
+
+        const record = result.rows[0];
+        const rendered = parseFloat(record.hours_rendered || 0);
+        const target = parseFloat(record.estimated_hours || 0);
+
+        if (rendered < target && !record.target_reached) {
+            return res.status(400).json({ 
+                success: false, 
+                message: `Cannot issue certificate: Student rendered ${rendered} hrs out of target ${target} hrs.` 
+            });
+        }
+
+        // Generate unique certificate reference number
+        const certNo = `CERT-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
+
+        await db.query(
+            `UPDATE activity_participants 
+             SET certificate_issued = TRUE, is_eligible_for_cert = TRUE, certificate_no = $1 
+             WHERE participant_id = $2`,
+            [certNo, participant_id]
+        );
+
+        return res.json({ 
+            success: true, 
+            certificate_no: certNo,
+            message: `Official Certificate (${certNo}) successfully issued to ${record.full_name}!` 
+        });
+
+    } catch (err) {
+        console.error('Issue Certificate Error:', err);
+        return res.status(500).json({ success: false, message: 'Server error issuing certificate.' });
+    }
+});
 
 module.exports = router;

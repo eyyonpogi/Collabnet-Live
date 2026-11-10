@@ -380,5 +380,68 @@ router.post('/time-out', verifyToken, async (req, res) => {
         return res.status(500).json({ success: false, message: 'Server error logging Time-Out.' });
     }
 });
+const { generateCertificatePDF } = require('../utils/pdfGenerator');
+
+// GET: Download Official Certificate PDF
+router.get('/certificate/download/:participant_id', verifyToken, async (req, res) => {
+    const user_id = req.user.user_id;
+    const { participant_id } = req.params;
+
+    try {
+        // Query participant verification and activity details
+        const certQuery = `
+            SELECT 
+                p.participant_id,
+                p.certificate_no,
+                p.hours_rendered,
+                p.target_reached,
+                p.is_eligible_for_cert,
+                p.certificate_issued,
+                u.full_name AS student_name,
+                u.course,
+                a.title AS activity_title,
+                a.location,
+                a.target_date,
+                a.estimated_hours
+            FROM activity_participants p
+            JOIN users u ON p.user_id = u.user_id
+            JOIN programs_activities a ON p.activity_id = a.activity_id
+            WHERE p.participant_id = $1 AND p.user_id = $2
+        `;
+        const result = await db.query(certQuery, [participant_id, user_id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).send('Certificate record not found.');
+        }
+
+        const record = result.rows[0];
+
+        // Check eligibility rules
+        if (!record.is_eligible_for_cert || !record.certificate_issued) {
+            return res.status(403).send('Certificate is not yet issued or student is ineligible due to incomplete hours/early out.');
+        }
+
+        const certData = {
+            certNo: record.certificate_no || `CERT-${new Date().getFullYear()}-${record.participant_id.toString().padStart(5, '0')}`,
+            studentName: record.student_name,
+            course: record.course,
+            activityTitle: record.activity_title,
+            location: record.location || 'Vinzons, Camarines Norte',
+            targetDate: record.target_date ? new Date(record.target_date).toISOString().split('T')[0] : 'N/A',
+            hoursRendered: parseFloat(record.hours_rendered || record.estimated_hours || 0),
+            issueDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+        };
+
+        const pdfBuffer = await generateCertificatePDF(certData);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename=Certificate_${certData.certNo}.pdf`);
+        res.send(pdfBuffer);
+
+    } catch (err) {
+        console.error('Certificate Download Error:', err);
+        res.status(500).send('Server error generating certificate PDF.');
+    }
+});
 
 module.exports = router;
