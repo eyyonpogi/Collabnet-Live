@@ -79,7 +79,7 @@
                         <span class="badge bg-white bg-opacity-25 text-white mb-2 text-uppercase fw-semibold" style="letter-spacing: 0.5px; font-size: 0.65rem;">
                             <i class="bi bi-shield-check me-1"></i> OLLCF EXTENSION OFFICE PORTAL
                         </span>
-                        <h2 class="fw-extrabold mb-1">Welcome back, Extension Director!</h2>
+                        <h2 id="welcomeHeader" class="fw-extrabold mb-1">Welcome back, Extension Director!</h2>
                         <p class="text-white-50 small mb-0">Here is your operational summary and quick decision panel for CollabNet.</p>
                     </div>
                     <div>
@@ -303,9 +303,20 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 async function loadAdminDashboard() {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        window.location.href = '/index.html';
+        return;
+    }
+
     try {
-        const res = await fetch('/api/admin/dashboard');
+        const res = await fetch('/api/admin/dashboard', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
         if (res.status === 401 || res.status === 403) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
             window.location.href = '/index.html';
             return;
         }
@@ -313,22 +324,33 @@ async function loadAdminDashboard() {
         const data = await res.json();
         if (!data.success) return;
 
-        // Populate KPIs
-        document.getElementById('kpiPendingStudents').textContent = data.metrics.pendingStudents;
-        document.getElementById('kpiPendingProposals').textContent = data.metrics.pendingProposals;
-        document.getElementById('kpiApprovedActivities').textContent = data.metrics.approvedActivities;
-        document.getElementById('kpiActiveMoas').textContent = data.metrics.activeMoas;
+        // Display Admin Name
+        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+        const adminName = data.admin_name || storedUser.full_name || 'Extension Director';
+        document.getElementById('sidebarUser').textContent = adminName;
+        document.getElementById('welcomeHeader').textContent = `Welcome back, ${adminName}!`;
 
-        // Populate Header Badges
-        document.getElementById('badgeProposalsCount').textContent = `${data.metrics.pendingProposals} Pending`;
-        document.getElementById('badgeStudentsCount').textContent = `${data.metrics.pendingStudents} Pending`;
+        // Populate KPIs (Handles flat & nested objects)
+        const pendingStudents = data.metrics?.pendingStudents ?? data.stats?.pending_students ?? 0;
+        const pendingProposals = data.metrics?.pendingProposals ?? data.stats?.pending_proposals ?? 0;
+        const approvedActivities = data.metrics?.approvedActivities ?? data.stats?.active_activities ?? 0;
+        const activeMoas = data.metrics?.activeMoas ?? data.stats?.total_partnerships ?? 0;
+
+        document.getElementById('kpiPendingStudents').textContent = pendingStudents;
+        document.getElementById('kpiPendingProposals').textContent = pendingProposals;
+        document.getElementById('kpiApprovedActivities').textContent = approvedActivities;
+        document.getElementById('kpiActiveMoas').textContent = activeMoas;
+
+        document.getElementById('badgeProposalsCount').textContent = `${pendingProposals} Pending`;
+        document.getElementById('badgeStudentsCount').textContent = `${pendingStudents} Pending`;
 
         // Render Proposals Table
         const proposalsBody = document.getElementById('proposalsTableBody');
-        if (!data.feeds.pendingProposals || data.feeds.pendingProposals.length === 0) {
+        const pendingList = data.feeds?.pendingProposals || data.activities || [];
+        if (!pendingList || pendingList.length === 0) {
             proposalsBody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-3">No activity proposals pending review.</td></tr>`;
         } else {
-            proposalsBody.innerHTML = data.feeds.pendingProposals.map(p => {
+            proposalsBody.innerHTML = pendingList.map(p => {
                 const formattedDate = p.target_date ? new Date(p.target_date).toISOString().split('T')[0] : 'N/A';
                 return `
                     <tr>
@@ -348,7 +370,8 @@ async function loadAdminDashboard() {
 
         // Render Student Verification Queue
         const studentsContainer = document.getElementById('studentsQueueContainer');
-        if (!data.feeds.pendingStudents || data.feeds.pendingStudents.length === 0) {
+        const studentsList = data.feeds?.pendingStudents || [];
+        if (!studentsList || studentsList.length === 0) {
             studentsContainer.innerHTML = `
                 <div class="text-center text-muted py-4 small">
                     <i class="bi bi-check-circle fs-3 text-success d-block mb-2"></i>
@@ -356,7 +379,7 @@ async function loadAdminDashboard() {
                 </div>
             `;
         } else {
-            studentsContainer.innerHTML = data.feeds.pendingStudents.map(s => `
+            studentsContainer.innerHTML = studentsList.map(s => `
                 <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-2 border-bottom-0">
                     <div>
                         <strong class="d-block text-dark small mb-0">${s.full_name}</strong>
@@ -385,7 +408,7 @@ function openRejectModal(activityId, title) {
 
 document.getElementById('rejectForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-
+    const token = localStorage.getItem('token');
     const activity_id = document.getElementById('rejectActivityId').value;
     const rejection_reason = document.getElementById('rejectionReasonInput').value.trim();
 
@@ -397,7 +420,10 @@ document.getElementById('rejectForm').addEventListener('submit', async (e) => {
     try {
         const res = await fetch('/api/admin/activities/evaluate', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({
                 activity_id: activity_id,
                 decision: 'reject',
@@ -414,7 +440,7 @@ document.getElementById('rejectForm').addEventListener('submit', async (e) => {
             showAlert('success', data.message || 'Activity proposal rejected successfully.');
             loadAdminDashboard();
         } else {
-            showAlert('danger', data.error || 'Failed to reject proposal.');
+            showAlert('danger', data.error || data.message || 'Failed to reject proposal.');
         }
     } catch (err) {
         console.error('Rejection submit error:', err);
@@ -423,10 +449,14 @@ document.getElementById('rejectForm').addEventListener('submit', async (e) => {
 });
 
 async function evaluateProposalDirect(activity_id, decision) {
+    const token = localStorage.getItem('token');
     try {
         const res = await fetch('/api/admin/activities/evaluate', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({ activity_id, decision })
         });
         const data = await res.json();
@@ -434,7 +464,7 @@ async function evaluateProposalDirect(activity_id, decision) {
             showAlert('success', data.message || 'Activity proposal approved successfully!');
             loadAdminDashboard();
         } else {
-            showAlert('danger', data.error || 'Failed to evaluate activity.');
+            showAlert('danger', data.error || data.message || 'Failed to evaluate activity.');
         }
     } catch (err) {
         console.error('Proposal decision error:', err);
@@ -442,10 +472,14 @@ async function evaluateProposalDirect(activity_id, decision) {
 }
 
 async function verifyStudent(user_id, action) {
+    const token = localStorage.getItem('token');
     try {
         const res = await fetch('/api/admin/students/verify', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({ user_id, action })
         });
         const data = await res.json();
@@ -457,8 +491,11 @@ async function verifyStudent(user_id, action) {
 }
 
 async function loadAgenciesForDropdown() {
+    const token = localStorage.getItem('token');
     try {
-        const res = await fetch('/api/partnerships/agencies');
+        const res = await fetch('/api/partnerships/agencies', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
         const data = await res.json();
         if (!res.ok || !data.success) return;
 
@@ -474,6 +511,7 @@ document.getElementById('moaStartDate').value = new Date().toISOString().split('
 
 document.getElementById('moaForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const token = localStorage.getItem('token');
 
     const payload = {
         agency_id: document.getElementById('moaAgency').value,
@@ -489,7 +527,10 @@ document.getElementById('moaForm').addEventListener('submit', async (e) => {
     try {
         const res = await fetch('/api/partnerships/create', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify(payload)
         });
 
@@ -504,7 +545,7 @@ document.getElementById('moaForm').addEventListener('submit', async (e) => {
             document.getElementById('moaForm').reset();
             loadAdminDashboard();
         } else {
-            showAlert('danger', data.error || 'Failed to register MOA.');
+            showAlert('danger', data.error || data.message || 'Failed to register MOA.');
         }
     } catch (err) {
         console.error('MOA submit error:', err);
@@ -525,8 +566,9 @@ function escapeHtml(str) {
     return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
-document.getElementById('logoutBtn').addEventListener('click', async () => {
-    await fetch('/api/auth/logout');
+document.getElementById('logoutBtn').addEventListener('click', () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     window.location.href = '/index.html';
 });
 
