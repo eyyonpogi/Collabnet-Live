@@ -69,7 +69,7 @@
         <div id="invalidState" class="card-body p-4 text-center d-none">
             <i class="bi bi-x-circle-fill text-danger display-3 mb-2 d-block"></i>
             <h5 class="fw-bold text-dark mb-1">Invalid Certificate</h5>
-            <p class="text-muted small mb-4">This certificate reference number does not exist in our official records or may have been revoked.</p>
+            <p id="invalidMessage" class="text-muted small mb-4">This certificate reference number does not exist in our official records or may have been revoked.</p>
             <a href="/index.html" class="btn btn-sm btn-primary fw-bold px-4">Return Home</a>
         </div>
     </div>
@@ -78,46 +78,51 @@
 <script>
 document.addEventListener('DOMContentLoaded', async () => {
     // Extract cert_no from URL: /verify-certificate/CERT-2026-00070 OR ?cert_no=...
-    const pathParts = window.location.pathname.split('/');
+    const pathParts = window.location.pathname.split('/').filter(p => p.length > 0);
     let certNo = pathParts[pathParts.length - 1];
 
-    if (!certNo || certNo === 'verify-certificate.html') {
+    if (!certNo || certNo === 'verify-certificate.html' || certNo === 'verify-certificate') {
         const urlParams = new URLSearchParams(window.location.search);
         certNo = urlParams.get('cert_no');
     }
 
     if (!certNo) {
-        showInvalid();
+        showInvalid('No certificate reference number provided.');
         return;
     }
 
     try {
-        const res = await fetch(`/api/public/verify-certificate/${certNo}`);
+        const res = await fetch(`/api/public/verify-certificate/${encodeURIComponent(certNo)}`);
         const data = await res.json();
 
         document.getElementById('loadingState').classList.add('d-none');
 
         if (res.ok && data.valid && data.certificate) {
             const cert = data.certificate;
-            document.getElementById('certNo').textContent = cert.certNo;
-            document.getElementById('studentName').textContent = cert.studentName;
-            document.getElementById('studentCourse').textContent = `${cert.course || 'OLLCF Student'} (${cert.studentId || 'N/A'})`;
-            document.getElementById('activityTitle').textContent = `"${cert.activityTitle}"`;
-            document.getElementById('hoursRendered').textContent = `${cert.hoursRendered.toFixed(2)} Service Hours`;
-            document.getElementById('targetDate').textContent = cert.targetDate;
+            document.getElementById('certNo').textContent = cert.certNo || certNo;
+            document.getElementById('studentName').textContent = cert.studentName || 'Student Volunteer';
+            document.getElementById('studentCourse').textContent = `${cert.course || 'OLLCF Student'} ${cert.studentId ? '(' + cert.studentId + ')' : ''}`;
+            document.getElementById('activityTitle').textContent = `"${cert.activityTitle || 'Community Outreach'}"`;
+            
+            const hours = typeof cert.hoursRendered === 'number' ? cert.hoursRendered.toFixed(2) : parseFloat(cert.hoursRendered || 0).toFixed(2);
+            document.getElementById('hoursRendered').textContent = `${hours} Service Hours`;
+            document.getElementById('targetDate').textContent = cert.targetDate || 'N/A';
 
             document.getElementById('validState').classList.remove('d-none');
         } else {
-            showInvalid();
+            showInvalid(data.message || 'This certificate reference number does not exist in our official records.');
         }
     } catch (err) {
         console.error('Verification error:', err);
-        showInvalid();
+        showInvalid('Failed to connect to the CollabNet verification server.');
     }
 });
 
-function showInvalid() {
+function showInvalid(customMessage) {
     document.getElementById('loadingState').classList.add('d-none');
+    if (customMessage) {
+        document.getElementById('invalidMessage').textContent = customMessage;
+    }
     document.getElementById('invalidState').classList.remove('d-none');
 }
 </script>
