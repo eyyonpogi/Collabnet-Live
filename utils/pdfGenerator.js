@@ -4,17 +4,6 @@ const QRCode = require('qrcode');
 
 /**
  * Generates an Official OLLCF x LGU Vinzons Certificate of Completion PDF Stream
- * 
- * @param {Object} certData
- * @param {string} certData.certNo - Unique Certificate Reference Number (e.g. CERT-2026-00891)
- * @param {string} certData.studentName - Full Name of Student
- * @param {string} certData.course - Academic Program (e.g. BSIT)
- * @param {string} certData.activityTitle - Title of Community Extension Project
- * @param {string} certData.location - Location/Barangay of Activity
- * @param {string} certData.targetDate - Date of Activity
- * @param {number} certData.hoursRendered - Total Validated Service Hours Rendered
- * @param {string} certData.issueDate - Certificate Issuance Date
- * @returns {Promise<Buffer>} - PDF Buffer
  */
 async function generateCertificatePDF(certData) {
     return new Promise(async (resolve, reject) => {
@@ -27,11 +16,9 @@ async function generateCertificatePDF(certData) {
             });
 
             const buffers = [];
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => {
-                const pdfBuffer = Buffer.concat(buffers);
-                resolve(pdfBuffer);
-            });
+            doc.on('data', chunk => buffers.push(chunk));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', err => reject(err));
 
             const width = 841.89;
             const height = 595.28;
@@ -61,12 +48,11 @@ async function generateCertificatePDF(certData) {
                .text('This certificate is proudly presented to', 0, 158, { align: 'center' });
 
             // --- 4. STUDENT NAME & PROGRAM ---
+            const studentNameUpper = (certData.studentName || 'STUDENT VOLUNTEER').toUpperCase();
             doc.fillColor('#000000').font('Helvetica-Bold').fontSize(24)
-               .text(certData.studentName.toUpperCase(), 0, 182, { align: 'center' });
+               .text(studentNameUpper, 0, 182, { align: 'center' });
 
-            const nameWidth = doc.widthOfString(certData.studentName.toUpperCase());
-            const startX = (width - nameWidth) / 2;
-            doc.moveTo(startX - 10, 210).lineTo(startX + nameWidth + 10, 210).lineWidth(1.5).strokeColor('#0d6efd').stroke();
+            doc.moveTo(220, 210).lineTo(width - 220, 210).lineWidth(1.5).strokeColor('#0d6efd').stroke();
 
             doc.fillColor('#6c757d').font('Helvetica-Bold').fontSize(11)
                .text(`Academic Program: ${certData.course || 'OLLCF Student'}`, 0, 218, { align: 'center' });
@@ -78,21 +64,27 @@ async function generateCertificatePDF(certData) {
                    100, 245, { align: 'center', width: width - 200 }
                );
 
-            doc.fillColor('#0d6efd').font('Helvetica-Bold').fontSize(16)
-               .text(`"${certData.activityTitle}"`, 80, 275, { align: 'center', width: width - 160 });
+            doc.fillColor('#0d6efd').font('Helvetica-Bold').fontSize(15)
+               .text(`"${certData.activityTitle || 'Community Extension Project'}"`, 80, 275, { align: 'center', width: width - 160 });
 
             doc.fillColor('#495057').font('Helvetica').fontSize(10)
                .text(
-                   `conducted at ${certData.location || 'Vinzons, Camarines Norte'} on ${certData.targetDate}, rendering a total of`,
+                   `conducted at ${certData.location || 'Vinzons, Camarines Norte'} on ${certData.targetDate || 'N/A'}, rendering a total of`,
                    100, 305, { align: 'center', width: width - 200 }
                );
 
+            const hoursVal = parseFloat(certData.hoursRendered || 0).toFixed(2);
             doc.fillColor('#198754').font('Helvetica-Bold').fontSize(13)
-               .text(`${certData.hoursRendered.toFixed(2)} Validated Community Service Hours`, 0, 323, { align: 'center' });
+               .text(`${hoursVal} Validated Community Service Hours`, 0, 323, { align: 'center' });
 
             // --- 6. QR CODE VERIFICATION ---
-            const qrDataUrl = await QRCode.toDataURL(`https://collabnet-live.onrender.com/verify-certificate/${certData.certNo}`);
-            doc.image(qrDataUrl, 55, 435, { fit: [80, 80] });
+            try {
+                const qrUrl = `https://collabnet-live.onrender.com/verify-certificate/${certData.certNo}`;
+                const qrDataUrl = await QRCode.toDataURL(qrUrl);
+                doc.image(qrDataUrl, 55, 435, { fit: [80, 80] });
+            } catch (e) {
+                console.warn('QR Code generation skipped:', e.message);
+            }
 
             doc.fillColor('#495057').font('Helvetica-Bold').fontSize(8)
                .text(`Ref. No: ${certData.certNo}`, 45, 520, { width: 100, align: 'center' });
