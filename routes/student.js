@@ -54,6 +54,104 @@ router.get('/dashboard', verifyToken, async (req, res) => {
     }
 });
 
+// GET: Fetch All Approved Extension Activities for Student Activities Page
+router.get('/activities', verifyToken, async (req, res) => {
+    const user_id = req.user.user_id;
+    const user_course = req.user.course || req.user.target_course;
+
+    try {
+        const query = `
+            SELECT 
+                a.activity_id,
+                a.title,
+                a.description,
+                a.location,
+                a.target_date,
+                a.estimated_hours,
+                a.max_volunteers,
+                a.target_course,
+                (p.participant_id IS NOT NULL) AS is_joined,
+                CASE 
+                    WHEN a.target_course = 'All Courses' OR a.target_course = $2 THEN true 
+                    ELSE false 
+                END AS is_eligible
+            FROM programs_activities a
+            LEFT JOIN activity_participants p ON a.activity_id = p.activity_id AND p.user_id = $1
+            WHERE a.status = 'Approved'
+            ORDER BY a.target_date ASC
+        `;
+        const result = await db.query(query, [user_id, user_course]);
+
+        return res.json({ success: true, activities: result.rows });
+    } catch (err) {
+        console.error('Fetch Activities Error:', err);
+        return res.status(500).json({ success: false, message: 'Failed to fetch activities list.' });
+    }
+});
+
+// POST: Join or Leave an Extension Activity with Schedule Conflict Prevention
+router.post('/activities/join', verifyToken, async (req, res) => {
+    const { activity_id, action } = req.body;
+    const user_id = req.user.user_id;
+
+    if (!activity_id) {
+        return res.status(400).json({ success: false, message: 'Activity ID is required.' });
+    }
+
+    try {
+        if (action === 'leave') {
+            await db.query(
+                `DELETE FROM activity_participants WHERE activity_id = $1 AND user_id = $2`,
+                [activity_id, user_id]
+            );
+            return res.json({ success: true, message: 'Successfully left the activity.' });
+        }
+
+        // 1. Fetch Target Activity Date
+        const targetActRes = await db.query(
+            `SELECT activity_id, title, target_date FROM programs_activities WHERE activity_id = $1`,
+            [activity_id]
+        );
+        if (targetActRes.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Activity not found.' });
+        }
+        const targetAct = targetActRes.rows[0];
+        const targetDate = new Date(targetAct.target_date).toISOString().split('T')[0];
+
+        // 2. Schedule Conflict Check (Check if student is already joined in another activity on the same date)
+        const conflictRes = await db.query(
+            `SELECT a.title 
+             FROM activity_participants p
+             JOIN programs_activities a ON p.activity_id = a.activity_id
+             WHERE p.user_id = $1 
+               AND p.activity_id != $2 
+               AND DATE(a.target_date) = $3`,
+            [user_id, activity_id, targetDate]
+        );
+
+        if (conflictRes.rows.length > 0) {
+            return res.status(400).json({ 
+                success: false, 
+                message: `Schedule Conflict: You are already registered for '${conflictRes.rows[0].title}' on ${targetDate}.` 
+            });
+        }
+
+        // 3. Register Student for Activity
+        await db.query(
+            `INSERT INTO activity_participants (activity_id, user_id) 
+             VALUES ($1, $2)
+             ON CONFLICT (activity_id, user_id) DO NOTHING`,
+            [activity_id, user_id]
+        );
+
+        return res.json({ success: true, message: `Successfully registered for '${targetAct.title}'!` });
+
+    } catch (err) {
+        console.error('Join/Leave Activity Error:', err);
+        return res.status(500).json({ success: false, message: 'Server error processing registration request.' });
+    }
+});
+
 // GET: Fetch Joined Activities for Attendance Logging
 router.get('/attendance-list', verifyToken, async (req, res) => {
     const user_id = req.user.user_id;
@@ -199,7 +297,6 @@ router.post('/time-out', verifyToken, async (req, res) => {
         }
 
         // 5. Save Time-Out Log & Eligibility Status
-        // If early out, target_reached = FALSE and is_eligible_for_cert = FALSE
         const isEligibleForCert = targetReached;
         const finalReason = targetReached ? null : early_out_reason.trim();
 
