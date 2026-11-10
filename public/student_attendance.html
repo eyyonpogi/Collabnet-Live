@@ -12,7 +12,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <!-- Custom Theme CSS -->
-    <link href="/assets/css/collabnet-theme.css" rel="stylesheet">
+    <link href="assets/css/collabnet-theme.css" rel="stylesheet">
 </head>
 <body class="bg-secondary bg-opacity-10">
 
@@ -89,7 +89,6 @@
                     </div>
 
                     <div class="modal-body py-3">
-                        <!-- Standard PIN Section -->
                         <div id="pinSection">
                             <p class="text-muted small text-center mb-2" style="font-size: 0.8rem;">
                                 Enter the 4-digit Time-Out PIN provided by the coordinator.
@@ -102,7 +101,6 @@
                                    required>
                         </div>
 
-                        <!-- Early Out Warning Alert Box (Hidden by Default) -->
                         <div id="earlyOutAlertBox" class="alert alert-warning border-warning d-none py-2 px-3 small rounded-3 mb-2">
                             <div class="d-flex align-items-center mb-1 text-warning-emphasis">
                                 <i class="bi bi-exclamation-triangle-fill fs-5 me-2"></i>
@@ -114,7 +112,6 @@
                             </small>
                         </div>
 
-                        <!-- Required Reason Textarea (Hidden by Default) -->
                         <div id="earlyReasonSection" class="d-none mt-2">
                             <label for="early_out_reason" class="form-label fw-bold small mb-1 text-dark" style="font-size: 0.78rem;">
                                 Reason for Early Time-Out <span class="text-danger">*</span>
@@ -154,7 +151,6 @@
             <span>Profile</span>
         </a>
     </nav>
-
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -199,6 +195,9 @@
                 const rendered = parseFloat(act.hours_rendered || 0);
                 const target = parseFloat(act.estimated_hours || 0);
                 const targetReached = act.target_reached || rendered >= target;
+                
+                // Format clean date string (YYYY-MM-DD)
+                const formattedDate = act.target_date ? new Date(act.target_date).toISOString().split('T')[0] : 'N/A';
 
                 let statusBadge = '';
                 if (hasIn && hasOut) {
@@ -231,8 +230,9 @@
                         ` : ''}
 
                         <div class="d-flex justify-content-between align-items-center pt-2 border-top">
-                            <div class="text-muted small" style="font-size: 0.75rem;">
-                                <i class="bi bi-calendar-event me-1 text-primary"></i>${act.target_date}
+                            <div class="text-muted small d-flex flex-column" style="font-size: 0.75rem;">
+                                <span><i class="bi bi-calendar-event me-1 text-primary"></i>${formattedDate}</span>
+                                <span class="text-primary fw-semibold"><i class="bi bi-clock-history me-1"></i>Target: ${target} hrs</span>
                             </div>
                             <div class="d-flex gap-1">
                                 <button type="button" 
@@ -301,7 +301,7 @@
 
             const data = await res.json();
             alert(data.message || data.error);
-            if (data.success) {
+            if (res.ok && data.success) {
                 location.reload();
             }
         } catch (err) {
@@ -332,7 +332,7 @@
 
             const data = await res.json();
 
-            if (!data.success && data.requires_early_reason) {
+            if (!res.ok && data.requires_early_reason) {
                 document.getElementById('earlyOutAlertBox').classList.remove('d-none');
                 document.getElementById('earlyReasonSection').classList.remove('d-none');
                 document.getElementById('early_out_reason').required = true;
@@ -347,7 +347,7 @@
             }
 
             alert(data.message || data.error);
-            if (data.success) {
+            if (res.ok && data.success) {
                 location.reload();
             }
         } catch (err) {
