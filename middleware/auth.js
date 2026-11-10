@@ -1,20 +1,26 @@
-function requireAuth(req, res, next) {
-  const userId = req.session.user?.user_id || req.session.user_id;
-  if (!userId) {
-    return res.status(401).json({ error: 'Unauthorized access. Please log in.' });
-  }
-  next();
-}
+const jwt = require('jsonwebtoken');
 
-function requireRole(...roles) {
-  return (req, res, next) => {
-    const userRole = req.session.user?.role || req.session.role;
-    if (!roles.includes(userRole)) {
-      return res.status(403).json({ error: 'Forbidden. You lack permissions for this resource.' });
+// Middleware to verify JWT Token
+const verifyToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    
+    if (!authHeader) {
+        return res.status(401).json({ success: false, message: 'Access denied. No token provided.' });
     }
-    next();
-  };
-}
 
-module.exports = { requireAuth, requireRole };
+    const token = authHeader.split(' ')[1]; // Extract token from "Bearer <TOKEN>"
+
+    if (!token) {
+        return res.status(401).json({ success: false, message: 'Access denied. Malformed token.' });
+    }
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_default_jwt_secret');
+        req.user = decoded; // Attaches user payload (user_id, role, full_name) to request
+        next();
+    } catch (err) {
+        return res.status(403).json({ success: false, message: 'Invalid or expired token.' });
+    }
+};
+
 module.exports = { verifyToken };
