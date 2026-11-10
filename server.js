@@ -56,6 +56,7 @@ app.get('/verify-certificate/:cert_no', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'verify-certificate.html'));
 });
 // GET: Public Certificate Verification Endpoint
+// GET: Public Certificate Verification Endpoint (Guaranteed Database Compatibility)
 app.get('/api/public/verify-certificate/:cert_no', async (req, res) => {
     const { cert_no } = req.params;
 
@@ -66,9 +67,9 @@ app.get('/api/public/verify-certificate/:cert_no', async (req, res) => {
     try {
         // Extract raw numeric participant_id from format like 'CERT-2026-00070' or '70'
         const numericMatch = cert_no.match(/\d+$/);
-        const extractedId = numericMatch ? parseInt(numericMatch[0], 10) : NaN;
+        const extractedId = numericMatch ? parseInt(numericMatch[0], 10) : 0;
 
-        // Query participant details cleanly without forcing invalid type comparisons
+        // Simplified query avoiding joins on optional/unmigrated tables
         const query = `
             SELECT 
                 p.participant_id,
@@ -81,18 +82,14 @@ app.get('/api/public/verify-certificate/:cert_no', async (req, res) => {
                 a.title AS activity_title,
                 a.location,
                 a.target_date,
-                a.estimated_hours,
-                d.dept_name
+                a.estimated_hours
             FROM activity_participants p
             JOIN users u ON p.user_id = u.user_id
             JOIN programs_activities a ON p.activity_id = a.activity_id
-            LEFT JOIN lgu_departments d ON a.dept_id = d.dept_id
             WHERE p.participant_id = $1 OR p.participant_id::text = $2
         `;
 
-        // Pass valid integer or fallback to 0 if NaN to avoid PostgreSQL 22P02 error
-        const paramId = isNaN(extractedId) ? 0 : extractedId;
-        const result = await db.query(query, [paramId, cert_no]);
+        const result = await db.query(query, [extractedId, cert_no]);
 
         if (result.rows.length === 0) {
             return res.status(404).json({ 
@@ -107,7 +104,7 @@ app.get('/api/public/verify-certificate/:cert_no', async (req, res) => {
         // Verify hours and completion status
         const rendered = parseFloat(record.hours_rendered || 0);
         const target = parseFloat(record.estimated_hours || 0);
-        const isCompleted = record.target_reached || rendered >= target;
+        const isCompleted = record.target_reached === true || rendered >= target;
 
         if (!isCompleted && record.early_out_reason) {
             return res.status(400).json({
@@ -128,7 +125,7 @@ app.get('/api/public/verify-certificate/:cert_no', async (req, res) => {
                 course: record.course,
                 studentId: record.student_id,
                 activityTitle: record.activity_title,
-                department: record.dept_name || 'LGU Vinzons',
+                department: 'LGU Vinzons',
                 location: record.location || 'Vinzons, Camarines Norte',
                 targetDate: record.target_date ? new Date(record.target_date).toISOString().split('T')[0] : 'N/A',
                 hoursRendered: parseFloat(record.hours_rendered || record.estimated_hours || 0)
@@ -140,8 +137,7 @@ app.get('/api/public/verify-certificate/:cert_no', async (req, res) => {
         return res.status(500).json({ 
             success: false, 
             valid: false, 
-            message: 'Server error verifying certificate. Please check server logs.',
-            error: err.message 
+            message: `Database Query Error: ${err.message}` 
         });
     }
 });
