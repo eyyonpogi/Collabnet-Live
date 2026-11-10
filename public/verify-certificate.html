@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Certificate Verification - CollabNet</title>
+    <!-- Bootstrap 5 CSS & Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link href="/assets/css/collabnet-theme.css" rel="stylesheet">
+</head>
+<body class="bg-light d-flex align-items-center justify-content-center min-vh-100 py-4">
+
+<div class="container" style="max-width: 520px;">
+    <div class="card border-0 shadow-lg rounded-4 overflow-hidden">
+        <!-- Header Banner -->
+        <div class="bg-primary text-white p-4 text-center position-relative">
+            <i class="bi bi-patch-check-fill display-3 text-warning mb-2 d-block"></i>
+            <h5 class="fw-bold mb-0">CollabNet Official Verification</h5>
+            <small class="text-white-50">OLLCF Extension Services x LGU Vinzons</small>
+        </div>
+
+        <!-- Verification Loading State -->
+        <div id="loadingState" class="card-body p-5 text-center">
+            <div class="spinner-border text-primary me-2" role="status"></div>
+            <p class="text-muted mt-3 mb-0">Verifying certificate authenticity...</p>
+        </div>
+
+        <!-- Verification Success State -->
+        <div id="validState" class="card-body p-4 d-none">
+            <div class="alert alert-success d-flex align-items-center rounded-3 py-2 px-3 mb-3">
+                <i class="bi bi-check-circle-fill fs-4 me-2"></i>
+                <div>
+                    <strong class="d-block" style="font-size: 0.9rem;">AUTHENTIC CERTIFICATE</strong>
+                    <small style="font-size: 0.75rem;">Registered and verified on the official extension portal.</small>
+                </div>
+            </div>
+
+            <div class="border rounded-3 p-3 bg-light">
+                <small class="text-muted text-uppercase fw-bold d-block mb-1" style="font-size: 0.65rem;">Certificate Reference Number</small>
+                <h6 id="certNo" class="fw-bold text-primary mb-3">--</h6>
+
+                <small class="text-muted text-uppercase fw-bold d-block mb-1" style="font-size: 0.65rem;">Issued To (Student Volunteer)</small>
+                <h5 id="studentName" class="fw-bold text-dark mb-1">--</h5>
+                <p id="studentCourse" class="text-muted small mb-3">--</p>
+
+                <small class="text-muted text-uppercase fw-bold d-block mb-1" style="font-size: 0.65rem;">Extension Activity Title</small>
+                <p id="activityTitle" class="fw-bold text-dark mb-3" style="font-size: 0.95rem;">--</p>
+
+                <div class="row g-2 pt-2 border-top">
+                    <div class="col-6">
+                        <small class="text-muted d-block" style="font-size: 0.7rem;">Validated Service Hours</small>
+                        <strong id="hoursRendered" class="text-success fs-6">-- hrs</strong>
+                    </div>
+                    <div class="col-6">
+                        <small class="text-muted d-block" style="font-size: 0.7rem;">Target Activity Date</small>
+                        <strong id="targetDate" class="text-dark">--</strong>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-center mt-4">
+                <small class="text-muted d-block mb-2" style="font-size: 0.72rem;">Our Lady of Lourdes College Foundation • Daet, Camarines Norte</small>
+                <a href="/index.html" class="btn btn-sm btn-outline-primary fw-bold rounded-pill px-4">Go to CollabNet Portal</a>
+            </div>
+        </div>
+
+        <!-- Verification Invalid State -->
+        <div id="invalidState" class="card-body p-4 text-center d-none">
+            <i class="bi bi-x-circle-fill text-danger display-3 mb-2 d-block"></i>
+            <h5 class="fw-bold text-dark mb-1">Invalid Certificate</h5>
+            <p class="text-muted small mb-4">This certificate reference number does not exist in our official records or may have been revoked.</p>
+            <a href="/index.html" class="btn btn-sm btn-primary fw-bold px-4">Return Home</a>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+    // Extract cert_no from URL: /verify-certificate/CERT-2026-00070 OR ?cert_no=...
+    const pathParts = window.location.pathname.split('/');
+    let certNo = pathParts[pathParts.length - 1];
+
+    if (!certNo || certNo === 'verify-certificate.html') {
+        const urlParams = new URLSearchParams(window.location.search);
+        certNo = urlParams.get('cert_no');
+    }
+
+    if (!certNo) {
+        showInvalid();
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/public/verify-certificate/${certNo}`);
+        const data = await res.json();
+
+        document.getElementById('loadingState').classList.add('d-none');
+
+        if (res.ok && data.valid && data.certificate) {
+            const cert = data.certificate;
+            document.getElementById('certNo').textContent = cert.certNo;
+            document.getElementById('studentName').textContent = cert.studentName;
+            document.getElementById('studentCourse').textContent = `${cert.course || 'OLLCF Student'} (${cert.studentId || 'N/A'})`;
+            document.getElementById('activityTitle').textContent = `"${cert.activityTitle}"`;
+            document.getElementById('hoursRendered').textContent = `${cert.hoursRendered.toFixed(2)} Service Hours`;
+            document.getElementById('targetDate').textContent = cert.targetDate;
+
+            document.getElementById('validState').classList.remove('d-none');
+        } else {
+            showInvalid();
+        }
+    } catch (err) {
+        console.error('Verification error:', err);
+        showInvalid();
+    }
+});
+
+function showInvalid() {
+    document.getElementById('loadingState').classList.add('d-none');
+    document.getElementById('invalidState').classList.remove('d-none');
+}
+</script>
+</body>
+</html>

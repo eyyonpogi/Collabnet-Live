@@ -52,5 +52,69 @@ app.get('/api/health', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+app.get('/verify-certificate/:cert_no', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'verify-certificate.html'));
+});
+// GET: Public Certificate Verification Endpoint
+app.get('/api/public/verify-certificate/:cert_no', async (req, res) => {
+    const { cert_no } = req.params;
+
+    try {
+        const query = `
+            SELECT 
+                p.participant_id,
+                p.certificate_no,
+                p.hours_rendered,
+                p.verified_at,
+                p.certificate_issued,
+                u.full_name AS student_name,
+                u.course,
+                u.student_id,
+                a.title AS activity_title,
+                a.location,
+                a.target_date,
+                a.estimated_hours,
+                d.dept_name
+            FROM activity_participants p
+            JOIN users u ON p.user_id = u.user_id
+            JOIN programs_activities a ON p.activity_id = a.activity_id
+            LEFT JOIN lgu_departments d ON a.dept_id = d.dept_id
+            WHERE p.certificate_no = $1 OR p.participant_id::text = $1
+        `;
+        
+        const result = await db.query(query, [cert_no]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ 
+                success: false, 
+                valid: false, 
+                message: 'Invalid Certificate Number. No record found in CollabNet database.' 
+            });
+        }
+
+        const record = result.rows[0];
+
+        return res.json({
+            success: true,
+            valid: true,
+            certificate: {
+                certNo: record.certificate_no || `CERT-2026-${record.participant_id}`,
+                studentName: record.student_name,
+                course: record.course,
+                studentId: record.student_id,
+                activityTitle: record.activity_title,
+                department: record.dept_name || 'LGU Vinzons',
+                location: record.location || 'Vinzons, Camarines Norte',
+                targetDate: record.target_date ? new Date(record.target_date).toISOString().split('T')[0] : 'N/A',
+                hoursRendered: parseFloat(record.hours_rendered || record.estimated_hours || 0),
+                issuedAt: record.verified_at ? new Date(record.verified_at).toLocaleDateString() : 'Official Issue'
+            }
+        });
+
+    } catch (err) {
+        console.error('QR Verification Error:', err);
+        return res.status(500).json({ success: false, message: 'Server error verifying certificate.' });
+    }
+});
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`CollabNet server running on http://localhost:${PORT}`));
