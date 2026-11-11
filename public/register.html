@@ -89,14 +89,26 @@
                 </select>
               </div>
 
+              <!-- Password Input with Eye Icon -->
               <div class="mb-3">
                 <label for="password" class="form-label fw-semibold">Password</label>
-                <input type="password" id="password" class="form-control" required>
+                <div class="input-group">
+                  <input type="password" id="password" class="form-control" required>
+                  <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordVisibility('password', 'togglePasswordIcon')">
+                    <i id="togglePasswordIcon" class="bi bi-eye-slash"></i>
+                  </button>
+                </div>
               </div>
 
+              <!-- Confirm Password Input with Eye Icon -->
               <div class="mb-3">
                 <label for="confirm_password" class="form-label fw-semibold">Confirm Password</label>
-                <input type="password" id="confirm_password" class="form-control" required>
+                <div class="input-group">
+                  <input type="password" id="confirm_password" class="form-control" required>
+                  <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordVisibility('confirm_password', 'toggleConfirmPasswordIcon')">
+                    <i id="toggleConfirmPasswordIcon" class="bi bi-eye-slash"></i>
+                  </button>
+                </div>
               </div>
 
               <button type="submit" class="btn btn-primary w-100 fw-bold">Register Account</button>
@@ -110,6 +122,21 @@
 </div>
 
 <script>
+function togglePasswordVisibility(inputId, iconId) {
+    const input = document.getElementById(inputId);
+    const icon = document.getElementById(iconId);
+    
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.classList.remove('bi-eye-slash');
+        icon.classList.add('bi-eye');
+    } else {
+        input.type = 'password';
+        icon.classList.remove('bi-eye');
+        icon.classList.add('bi-eye-slash');
+    }
+}
+
 document.getElementById('registerForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   
