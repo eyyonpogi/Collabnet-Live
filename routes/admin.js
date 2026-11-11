@@ -118,14 +118,12 @@ router.post('/students/verify', async (req, res) => {
 // --- 3. GET ALL ACTIVITIES WITH AUTO-EXPIRATION CHECK ---
 router.get('/activities', async (req, res) => {
   try {
-    // Mark overdue pending proposals as 'Expired'
     await pool.query(`
       UPDATE public.programs_activities
       SET status = 'Expired'
       WHERE status = 'Pending' AND expires_at < CURRENT_TIMESTAMP
     `);
 
-    // Fetch all activities with rejection reasons and validity dates
     const query = `
       SELECT 
         a.*, 
@@ -153,7 +151,6 @@ router.post('/activities/evaluate', async (req, res) => {
     return res.status(400).json({ error: 'Invalid activity ID or evaluation decision.' });
   }
 
-  // Validates rejection reason
   if (decision === 'reject' && (!rejection_reason || rejection_reason.trim() === '')) {
     return res.status(400).json({ error: 'A valid rejection reason is required when rejecting an activity.' });
   }
@@ -162,13 +159,11 @@ router.post('/activities/evaluate', async (req, res) => {
     const statusVal = decision === 'approve' ? 'Approved' : 'Rejected';
     const reasonText = decision === 'reject' ? rejection_reason.trim() : null;
 
-    // Updates status and rejection_reason in programs_activities
     await pool.query(
       'UPDATE programs_activities SET status = $1, rejection_reason = $2 WHERE activity_id = $3',
       [statusVal, reasonText, activity_id]
     );
 
-    // Writes audit log to activity_logs table
     let logText = `Extension Activity ID #${activity_id} was ${statusVal.toLowerCase()} by ${req.session.full_name || 'Extension Director'}`;
     if (decision === 'reject') {
       logText += `. Reason: ${reasonText}`;
@@ -186,7 +181,7 @@ router.post('/activities/evaluate', async (req, res) => {
   }
 });
 
-// --- 5. ATTENDANCE & CERTIFICATE AUDIT ---
+// --- 5. AUTOMATED ATTENDANCE & CERTIFICATE AUDIT LOGS ---
 router.get('/attendance/audit/:activityId', async (req, res) => {
   const activityId = parseInt(req.params.activityId, 10);
 
@@ -211,7 +206,7 @@ router.get('/attendance/audit/:activityId', async (req, res) => {
       SELECT ap.*, 
              COALESCE(ap.time_in, ap.time_in_at) AS formatted_time_in,
              COALESCE(ap.time_out, ap.time_out_at) AS formatted_time_out,
-             u.full_name, u.student_id, u.email,
+             u.full_name, u.student_id, u.email, u.course,
              p.estimated_hours AS target_hours
       FROM activity_participants ap
       JOIN users u ON ap.user_id = u.user_id
@@ -221,54 +216,37 @@ router.get('/attendance/audit/:activityId', async (req, res) => {
     `;
     const participantsRes = await pool.query(participantsQuery, [activityId]);
 
+    const auditRecords = participantsRes.rows.map(row => {
+      const rendered = parseFloat(row.hours_rendered || 0);
+      const target = parseFloat(row.target_hours || 0);
+
+      // System Automatic Certificate Eligibility Rule
+      const isCompleted = row.target_reached === true || (rendered >= target && target > 0) || row.certificate_issued === true;
+      const isEarlyOut = !isCompleted && Boolean(row.early_out_reason);
+
+      let certNo = row.certificate_no;
+      if (!certNo && isCompleted) {
+        certNo = `CERT-2026-${row.participant_id.toString().padStart(5, '0')}`;
+      }
+
+      return {
+        ...row,
+        hours_rendered: rendered,
+        target_hours: target,
+        certificate_no: certNo,
+        is_eligible: isCompleted,
+        is_early_out: isEarlyOut
+      };
+    });
+
     res.json({
       success: true,
       activity: actRes.rows[0],
-      participants: participantsRes.rows
+      participants: auditRecords
     });
   } catch (err) {
     console.error('Attendance Audit Error:', err);
     res.status(500).json({ error: 'Failed to load attendance audit log.' });
-  }
-});
-
-// Award Certificate and Verify Service Hours Completion
-router.post('/attendance/verify-certificate', async (req, res) => {
-  const { participant_id } = req.body;
-
-  if (!participant_id) {
-    return res.status(400).json({ error: 'Participant ID is required.' });
-  }
-
-  try {
-    // Ensure participant completed both Time-In and Time-Out
-    const checkQuery = `
-      SELECT COALESCE(time_in, time_in_at) AS actual_time_in,
-             COALESCE(time_out, time_out_at) AS actual_time_out
-      FROM activity_participants
-      WHERE participant_id = $1
-    `;
-    const checkRes = await pool.query(checkQuery, [participant_id]);
-
-    if (checkRes.rows.length === 0) {
-      return res.status(404).json({ error: 'Participant record not found.' });
-    }
-
-    const { actual_time_in, actual_time_out } = checkRes.rows[0];
-
-    if (!actual_time_in || !actual_time_out) {
-      return res.status(400).json({ error: 'Cannot award certificate! Student must log both Time-In and Time-Out.' });
-    }
-
-    await pool.query(
-      "UPDATE activity_participants SET status = 'Completed', certificate_issued = TRUE, verified_at = CURRENT_TIMESTAMP WHERE participant_id = $1",
-      [participant_id]
-    );
-
-    res.json({ success: true, message: 'Student participation verified! Certificate awarded and service hours updated.' });
-  } catch (err) {
-    console.error('Certificate Award Error:', err);
-    res.status(500).json({ error: 'Failed to issue certificate.' });
   }
 });
 
@@ -293,7 +271,6 @@ router.get('/activities/list', async (req, res) => {
   const status = req.query.status || 'Pending';
 
   try {
-    // Auto-expire check before filtering
     await pool.query(`
       UPDATE public.programs_activities
       SET status = 'Expired'
@@ -323,61 +300,6 @@ router.get('/activities/list', async (req, res) => {
     console.error('Fetch Admin Activities Error:', err);
     res.status(500).json({ error: 'Failed to retrieve extension activities.', details: err.message });
   }
-});
-
-// --- 7. POST: ADMIN ISSUE & GENERATE CERTIFICATE NUMBER ---
-router.post('/issue-certificate', async (req, res) => {
-    const { participant_id } = req.body;
-
-    if (!participant_id) {
-        return res.status(400).json({ success: false, message: 'Participant ID is required.' });
-    }
-
-    try {
-        const query = `
-            SELECT p.participant_id, p.hours_rendered, p.target_reached, a.estimated_hours, u.full_name
-            FROM activity_participants p
-            JOIN programs_activities a ON p.activity_id = a.activity_id
-            JOIN users u ON p.user_id = u.user_id
-            WHERE p.participant_id = $1
-        `;
-        const result = await pool.query(query, [participant_id]);
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Participant record not found.' });
-        }
-
-        const record = result.rows[0];
-        const rendered = parseFloat(record.hours_rendered || 0);
-        const target = parseFloat(record.estimated_hours || 0);
-
-        if (rendered < target && !record.target_reached) {
-            return res.status(400).json({ 
-                success: false, 
-                message: `Cannot issue certificate: Student rendered ${rendered} hrs out of target ${target} hrs.` 
-            });
-        }
-
-        // Generate unique certificate reference number
-        const certNo = `CERT-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
-
-        await pool.query(
-            `UPDATE activity_participants 
-             SET certificate_issued = TRUE, is_eligible_for_cert = TRUE, certificate_no = $1 
-             WHERE participant_id = $2`,
-            [certNo, participant_id]
-        );
-
-        return res.json({ 
-            success: true, 
-            certificate_no: certNo,
-            message: `Official Certificate (${certNo}) successfully issued to ${record.full_name}!` 
-        });
-
-    } catch (err) {
-        console.error('Issue Certificate Error:', err);
-        return res.status(500).json({ success: false, message: 'Server error issuing certificate.' });
-    }
 });
 
 module.exports = router;
