@@ -47,11 +47,12 @@ router.get('/dashboard', verifyToken, async (req, res) => {
     }
 });
 
-// GET: Fetch Student Profile Details & Total Statistics
+// GET: Fetch Student Profile Details, Total Statistics, and Earned Certificates Gallery
 router.get('/profile', verifyToken, async (req, res) => {
     const user_id = req.user.user_id;
 
     try {
+        // 1. Fetch User Profile
         const userRes = await db.query(
             `SELECT user_id, full_name, email, student_id, course, verification_status 
              FROM users WHERE user_id = $1`,
@@ -64,6 +65,7 @@ router.get('/profile', verifyToken, async (req, res) => {
 
         const user = userRes.rows[0];
 
+        // 2. Fetch Hours and Activity Stats
         const statsRes = await db.query(
             `SELECT 
                 COUNT(*) AS joined_count,
@@ -72,8 +74,33 @@ router.get('/profile', verifyToken, async (req, res) => {
              WHERE user_id = $1`,
             [user_id]
         );
-
         const stats = statsRes.rows[0];
+
+        // 3. Fetch Earned Certificates Gallery Records
+        const certsRes = await db.query(
+            `SELECT 
+                p.participant_id,
+                p.hours_rendered,
+                p.certificate_no,
+                a.title AS activity_title,
+                a.target_date,
+                a.location,
+                a.estimated_hours
+             FROM activity_participants p
+             JOIN programs_activities a ON p.activity_id = a.activity_id
+             WHERE p.user_id = $1 
+               AND (p.target_reached = TRUE OR p.certificate_issued = TRUE OR p.hours_rendered >= a.estimated_hours)
+             ORDER BY a.target_date DESC`,
+            [user_id]
+        );
+
+        const certificates = certsRes.rows.map(cert => ({
+            participantId: cert.participant_id,
+            certNo: cert.certificate_no || `CERT-2026-${cert.participant_id.toString().padStart(5, '0')}`,
+            activityTitle: cert.activity_title,
+            targetDate: cert.target_date ? new Date(cert.target_date).toISOString().split('T')[0] : 'N/A',
+            hoursRendered: parseFloat(cert.hours_rendered || cert.estimated_hours || 0)
+        }));
 
         return res.json({
             success: true,
@@ -86,8 +113,10 @@ router.get('/profile', verifyToken, async (req, res) => {
             },
             stats: {
                 totalHours: parseFloat(stats.total_hours || 0),
-                joinedCount: parseInt(stats.joined_count || 0, 10)
-            }
+                joinedCount: parseInt(stats.joined_count || 0, 10),
+                earnedCertificatesCount: certificates.length
+            },
+            certificates: certificates
         });
     } catch (err) {
         console.error('Fetch Profile Error:', err);
@@ -339,7 +368,7 @@ router.post('/time-out', verifyToken, async (req, res) => {
                  hours_rendered = $1,
                  target_reached = $2,
                  early_out_reason = $3
-             WHERE participant_id = $5`,
+             WHERE participant_id = $4`,
             [hoursRendered, targetReached, finalReason, participant.participant_id]
         );
 
@@ -391,12 +420,12 @@ router.get('/certificate/download/:participant_id', verifyToken, async (req, res
 
         const record = result.rows[0];
 
-        // 1. Generate or reuse certificate number
+        // Generate or reuse certificate number
         let certNo = record.certificate_no;
         if (!certNo) {
             certNo = `CERT-2026-${record.participant_id.toString().padStart(5, '0')}`;
             
-            // 2. SAVE/UPDATE certificate_no in PostgreSQL database
+            // Save/Update certificate_no in PostgreSQL database
             await db.query(
                 `UPDATE activity_participants 
                  SET certificate_no = $1, certificate_issued = TRUE 
@@ -428,4 +457,4 @@ router.get('/certificate/download/:participant_id', verifyToken, async (req, res
     }
 });
 
-module.exports = router;    
+module.exports = router;

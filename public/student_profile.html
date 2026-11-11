@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>My Profile - CollabNet</title>
+    <title>My Profile & Certificates - CollabNet</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -36,14 +36,18 @@
                     <i class="bi bi-clock-history me-1"></i>Pending Verification
                 </span>
             </div>
-            <div class="row text-center pt-2 border-top">
-                <div class="col-6 border-end">
-                    <div id="statTotalHours" class="fw-bold fs-5 text-primary">0.00</div>
-                    <small class="text-muted" style="font-size: 0.7rem;">Hours Rendered</small>
+            <div class="row text-center pt-2 border-top g-2">
+                <div class="col-4 border-end">
+                    <div id="statTotalHours" class="fw-bold fs-6 text-primary">0.00</div>
+                    <small class="text-muted d-block" style="font-size: 0.65rem;">Hours Rendered</small>
                 </div>
-                <div class="col-6">
-                    <div id="statJoinedCount" class="fw-bold fs-5 text-dark">0</div>
-                    <small class="text-muted" style="font-size: 0.7rem;">Activities Joined</small>
+                <div class="col-4 border-end">
+                    <div id="statJoinedCount" class="fw-bold fs-6 text-dark">0</div>
+                    <small class="text-muted d-block" style="font-size: 0.65rem;">Activities Joined</small>
+                </div>
+                <div class="col-4">
+                    <div id="statCertsCount" class="fw-bold fs-6 text-success">0</div>
+                    <small class="text-muted d-block" style="font-size: 0.65rem;">Certificates</small>
                 </div>
             </div>
         </div>
@@ -64,6 +68,26 @@
             <div class="mb-0">
                 <small class="text-muted d-block" style="font-size: 0.7rem;">OLLCF EMAIL ADDRESS</small>
                 <span id="infoEmail" class="fw-semibold text-dark" style="font-size: 0.85rem;">--</span>
+            </div>
+        </div>
+
+        <!-- Earned Certificates Gallery Card -->
+        <div class="student-action-card mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2">
+                <h6 class="fw-bold mb-0 text-dark">
+                    <i class="bi bi-patch-check-fill me-2 text-success"></i>Achieved Certificates
+                </h6>
+                <span id="galleryCountBadge" class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25" style="font-size: 0.7rem;">
+                    0 Certificates
+                </span>
+            </div>
+
+            <!-- Certificates Feed Container -->
+            <div id="certificatesGalleryContainer">
+                <div class="text-center text-muted py-3">
+                    <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                    <small>Loading certificate gallery...</small>
+                </div>
             </div>
         </div>
 
@@ -121,9 +145,9 @@ async function loadProfile() {
         const data = await res.json();
         if (!data.success) return;
 
-        const { profile, stats } = data;
+        const { profile, stats, certificates } = data;
 
-        // Populate Header & Card Info
+        // Populate Header & Academic Info
         document.getElementById('profileName').textContent = profile.fullName;
         document.getElementById('profileCourseHeader').textContent = profile.course || 'OLLCF Student';
         
@@ -134,6 +158,7 @@ async function loadProfile() {
         // Populate Metrics
         document.getElementById('statTotalHours').textContent = parseFloat(stats.totalHours || 0).toFixed(2);
         document.getElementById('statJoinedCount').textContent = stats.joinedCount || 0;
+        document.getElementById('statCertsCount').textContent = stats.earnedCertificatesCount || (certificates ? certificates.length : 0);
 
         // Verification Badge Status
         const badgeEl = document.getElementById('accountStatusBadge');
@@ -145,8 +170,70 @@ async function loadProfile() {
             badgeEl.innerHTML = '<i class="bi bi-clock-history me-1"></i>Pending Verification';
         }
 
+        // Render Earned Certificates Gallery
+        const galleryContainer = document.getElementById('certificatesGalleryContainer');
+        const galleryBadge = document.getElementById('galleryCountBadge');
+
+        if (!certificates || certificates.length === 0) {
+            galleryBadge.textContent = '0 Certificates';
+            galleryContainer.innerHTML = `
+                <div class="text-center text-muted py-3">
+                    <i class="bi bi-award display-6 text-muted mb-2 d-block opacity-50"></i>
+                    <small class="d-block">No certificates earned yet.</small>
+                    <small class="text-muted" style="font-size: 0.7rem;">Complete outreach target hours to unlock official certificates.</small>
+                </div>
+            `;
+            return;
+        }
+
+        galleryBadge.textContent = `${certificates.length} Certificate${certificates.length > 1 ? 's' : ''}`;
+
+        galleryContainer.innerHTML = certificates.map(cert => `
+            <div class="border rounded-3 p-2 mb-2 bg-light d-flex justify-content-between align-items-center">
+                <div class="me-2 text-truncate">
+                    <strong class="d-block text-dark text-truncate" style="font-size: 0.8rem;">${cert.activityTitle}</strong>
+                    <small class="text-success d-block" style="font-size: 0.7rem;">
+                        <i class="bi bi-check-circle-fill me-1"></i>${cert.hoursRendered.toFixed(2)} Service Hours
+                    </small>
+                    <small class="text-muted font-monospace" style="font-size: 0.65rem;">${cert.certNo}</small>
+                </div>
+                <button onclick="downloadCertificate('${cert.participantId}', '${cert.certNo}')" 
+                        class="btn btn-sm btn-primary fw-bold text-nowrap px-3 py-1" style="font-size: 0.72rem;">
+                    <i class="bi bi-download me-1"></i> PDF
+                </button>
+            </div>
+        `).join('');
+
     } catch (err) {
         console.error('Failed to load profile:', err);
+    }
+}
+
+// Download Certificate PDF Helper
+async function downloadCertificate(participantId, certNo) {
+    const token = localStorage.getItem('token');
+    try {
+        const response = await fetch(`/api/student/certificate/download/${participantId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+            alert('Unable to download certificate PDF.');
+            return;
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Certificate_${certNo || participantId}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+    } catch (err) {
+        console.error('Download Certificate Error:', err);
+        alert('Server error downloading certificate.');
     }
 }
 
