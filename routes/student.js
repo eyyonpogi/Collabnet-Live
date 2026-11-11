@@ -159,7 +159,7 @@ router.get('/activities', verifyToken, async (req, res) => {
     }
 });
 
-// POST: Join or Leave an Extension Activity
+// POST: Join or Leave an Extension Activity (Protected against leaving completed/issued activities)
 router.post('/activities/join', verifyToken, async (req, res) => {
     const { activity_id, action } = req.body;
     const user_id = req.user.user_id;
@@ -170,6 +170,34 @@ router.post('/activities/join', verifyToken, async (req, res) => {
 
     try {
         if (action === 'leave') {
+            // Check if student has already completed target hours or been issued a certificate
+            const checkQuery = `
+                SELECT 
+                    participant_id, 
+                    hours_rendered, 
+                    target_reached, 
+                    certificate_issued,
+                    is_eligible_for_cert
+                FROM activity_participants
+                WHERE activity_id = $1 AND user_id = $2
+            `;
+            const checkRes = await db.query(checkQuery, [activity_id, user_id]);
+
+            if (checkRes.rows.length === 0) {
+                return res.status(404).json({ success: false, message: 'Participation record not found.' });
+            }
+
+            const participant = checkRes.rows[0];
+
+            // Block leaving if certificate is earned, issued, or target reached
+            if (participant.certificate_issued || participant.target_reached || participant.is_eligible_for_cert) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: 'Action denied: You cannot leave an activity for which a Certificate of Completion has already been earned or issued.' 
+                });
+            }
+
+            // Otherwise, process normal cancellation/leaving
             await db.query(
                 `DELETE FROM activity_participants WHERE activity_id = $1 AND user_id = $2`,
                 [activity_id, user_id]
@@ -177,6 +205,7 @@ router.post('/activities/join', verifyToken, async (req, res) => {
             return res.json({ success: true, message: 'Successfully left the activity.' });
         }
 
+        // --- JOIN ACTIVITY LOGIC ---
         const targetActRes = await db.query(
             `SELECT activity_id, title, target_date FROM programs_activities WHERE activity_id = $1`,
             [activity_id]
