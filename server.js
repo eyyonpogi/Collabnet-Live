@@ -37,6 +37,8 @@ app.use((req, res, next) => {
 
 app.use(express.static('assets'));
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/student', studentRoutes);

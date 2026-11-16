@@ -259,6 +259,17 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
         verification_doc_name: processedDocName
       })
     });
+
+    const contentType = res.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      if (res.status === 413) {
+        showError('Uploaded file is too large. Please upload a smaller image or PDF.');
+      } else {
+        showError(`Server error (${res.status}). Please try again.`);
+      }
+      return;
+    }
+
     const data = await res.json();
 
     if (res.ok) {
