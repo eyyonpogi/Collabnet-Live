@@ -72,19 +72,24 @@
 
         <!-- Page Content -->
         <main class="cn-content">
-            <!-- Header Title & Action Bar -->
-            <div class="d-flex justify-content-between align-items-center mb-4">
+            <!-- Header Title & Countdown Bar -->
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
                 <div>
-                    <h3 class="fw-bold mb-1 text-dark">On-Site Attendance PIN Manager</h3>
-                    <p class="text-muted small mb-0">Generate and manage 4-digit venue passcodes for student Time-In and Time-Out tracking.</p>
+                    <h3 class="fw-bold mb-1 text-dark">Dynamic 30-Second Venue PIN Manager</h3>
+                    <p class="text-muted small mb-0">Unique 4-digit attendance PINs automatically rotate every 30 seconds to prevent off-site PIN sharing.</p>
                 </div>
-                <a href="/lgu_dashboard.html" class="btn btn-outline-secondary btn-sm fw-semibold px-3 py-2 shadow-sm">
-                    <i class="bi bi-arrow-left me-1"></i> Back to Dashboard
-                </a>
+                <div class="bg-white border rounded-3 px-3 py-2 shadow-sm" style="min-width: 240px;">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="small fw-bold text-muted text-uppercase" style="font-size: 0.68rem;">
+                            <i class="bi bi-shield-lock-fill text-primary me-1"></i>PIN Refresh Timer
+                        </span>
+                        <span id="countdownText" class="badge bg-primary fw-bold">30s</span>
+                    </div>
+                    <div class="progress" style="height: 6px;">
+                        <div id="countdownProgress" class="progress-bar bg-primary" role="progressbar" style="width: 100%; transition: width 0.9s linear;"></div>
+                    </div>
+                </div>
             </div>
-
-            <!-- Feedback Alert Container -->
-            <div id="alertContainer"></div>
 
             <!-- Approved Activities PIN Table Card -->
             <div class="cn-card p-3">
@@ -95,13 +100,13 @@
                                 <th>APPROVED ACTIVITY</th>
                                 <th>SUB-UNIT / BARANGAY</th>
                                 <th>TARGET DATE</th>
-                                <th>TIME-IN PIN</th>
-                                <th>TIME-OUT PIN</th>
-                                <th class="text-end">MANAGE PINS</th>
+                                <th>LIVE TIME-IN PIN</th>
+                                <th>LIVE TIME-OUT PIN</th>
+                                <th class="text-end">DISPLAY</th>
                             </tr>
                         </thead>
                         <tbody id="pinTableBody">
-                            <tr><td colspan="6" class="text-center text-muted py-4">Loading approved activities...</td></tr>
+                            <tr><td colspan="6" class="text-center text-muted py-4">Generating live 30-second attendance PINs...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -110,42 +115,45 @@
     </div>
 </div>
 
-<!-- Modal: Venue PIN Passcode Manager -->
-<div class="modal fade" id="pinModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg">
-            <form id="pinForm">
-                <input type="hidden" id="pinActivityId">
-                <div class="modal-header border-bottom-0 pb-0">
-                    <div class="d-flex align-items-center gap-2">
-                        <i class="bi bi-key-fill text-primary fs-4"></i>
-                        <h5 class="modal-title fw-bold text-dark">Attendance PINs for Event</h5>
-                    </div>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body py-3">
-                    <p class="text-muted small mb-3">
-                        Event: <strong id="pinActivityTitle" class="text-dark">--</strong>
-                    </p>
-                    <div class="row g-3 mb-3">
-                        <div class="col-6">
-                            <label class="form-label-custom">TIME-IN PIN (4-DIGIT)</label>
-                            <input type="text" id="timeInPin" maxlength="4" class="form-control form-control-custom text-center fw-bold fs-4" placeholder="1234" required>
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label-custom">TIME-OUT PIN (4-DIGIT)</label>
-                            <input type="text" id="timeOutPin" maxlength="4" class="form-control form-control-custom text-center fw-bold fs-4" placeholder="5678" required>
+<!-- Modal: Large Venue Display Screen for On-Site Projection -->
+<div class="modal fade" id="displayPinModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg rounded-4 text-center p-3">
+            <div class="modal-header border-bottom-0 pb-0">
+                <span class="badge bg-primary bg-opacity-10 text-primary border border-primary px-3 py-1 fw-bold">
+                    <i class="bi bi-broadcast me-1"></i>LIVE VENUE ATTENDANCE CODE (30s ROTATION)
+                </span>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-4">
+                <h4 id="dispActivityTitle" class="fw-bold text-dark mb-1">--</h4>
+                <p id="dispActivityLocation" class="text-muted small mb-4">--</p>
+
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <div class="p-4 rounded-4 bg-success bg-opacity-10 border border-success border-opacity-25">
+                            <span class="text-success fw-bold text-uppercase small d-block mb-1">TIME-IN PIN</span>
+                            <div id="dispTimeInPin" class="display-2 fw-extrabold text-success" style="letter-spacing: 0.25rem; font-family: monospace;">----</div>
                         </div>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-dark w-100 fw-semibold mb-2" onclick="autoGeneratePins()">
-                        <i class="bi bi-shuffle me-1"></i> Auto-Generate Random PINs
-                    </button>
+                    <div class="col-md-6">
+                        <div class="p-4 rounded-4 bg-info bg-opacity-10 border border-info border-opacity-25">
+                            <span class="text-info-emphasis fw-bold text-uppercase small d-block mb-1">TIME-OUT PIN</span>
+                            <div id="dispTimeOutPin" class="display-2 fw-extrabold text-info-emphasis" style="letter-spacing: 0.25rem; font-family: monospace;">----</div>
+                        </div>
+                    </div>
                 </div>
-                <div class="modal-footer border-top-0 pt-0">
-                    <button type="button" class="btn btn-sm btn-secondary fw-semibold" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-sm btn-primary fw-bold px-3">Save PINs</button>
+
+                <div class="mx-auto" style="max-width: 360px;">
+                    <div class="d-flex justify-content-between small fw-bold text-muted mb-1">
+                        <span>Expires in:</span>
+                        <span id="modalCountdownText" class="text-danger">30s</span>
+                    </div>
+                    <div class="progress" style="height: 10px;">
+                        <div id="modalCountdownProgress" class="progress-bar bg-danger" style="width: 100%; transition: width 0.9s linear;"></div>
+                    </div>
                 </div>
-            </form>
+            </div>
         </div>
     </div>
 </div>
@@ -153,19 +161,17 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 let loadedActivities = [];
+let activeDisplayActId = null;
 
-async function loadPinActivities() {
+async function fetchLivePins() {
     const token = localStorage.getItem('token');
     if (!token) {
         window.location.href = '/index.html';
         return;
     }
 
-    const tableBody = document.getElementById('pinTableBody');
-    if (!tableBody) return;
-
     try {
-        const response = await fetch('/api/lgu/pin-activities', {
+        const response = await fetch('/api/lgu/attendance/live-pins', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
 
@@ -177,109 +183,109 @@ async function loadPinActivities() {
         }
 
         const data = await response.json();
+        if (!data.success) return;
 
-        if (!data.success || !data.activities || data.activities.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4">No approved activities found.</td></tr>`;
-            return;
-        }
-
-        loadedActivities = data.activities; 
-
-        tableBody.innerHTML = loadedActivities.map(act => `
-            <tr>
-                <td>
-                    <strong class="d-block text-dark">${act.title}</strong>
-                    <small class="text-muted"><i class="bi bi-geo-alt me-1"></i>${act.location || 'Vinzons'}</small>
-                </td>
-                <td>
-                    <span class="badge bg-light text-secondary border">
-                        ${act.dept_name || 'Main LGU Office'}
-                    </span>
-                </td>
-                <td><i class="bi bi-calendar-event me-1 text-primary"></i>${act.target_date ? act.target_date.split('T')[0] : 'N/A'}</td>
-                <td>
-                    ${act.time_in_passcode 
-                        ? `<span class="badge bg-success fs-6">${act.time_in_passcode}</span>` 
-                        : `<span class="badge bg-secondary">Not Set</span>`}
-                </td>
-                <td>
-                    ${act.time_out_passcode 
-                        ? `<span class="badge bg-info text-dark fs-6">${act.time_out_passcode}</span>` 
-                        : `<span class="badge bg-secondary">Not Set</span>`}
-                </td>
-                <td class="text-end">
-                    <button class="btn btn-sm btn-primary fw-bold" onclick="openPinModal(${act.activity_id})">
-                        <i class="bi bi-key-fill me-1"></i> Set / Generate PINs
-                    </button>
-                </td>
-            </tr>
-        `).join('');
-
+        loadedActivities = data.activities || [];
+        renderPinTable(loadedActivities);
+        updateDisplayModalData();
     } catch (err) {
-        console.error('Failed to load PIN manager activities:', err);
-        tableBody.innerHTML = `<tr><td colspan="6" class="text-center text-danger py-4">Failed to connect to server.</td></tr>`;
+        console.error('Failed to fetch live PINs:', err);
     }
 }
 
-function openPinModal(actId) {
-    const act = loadedActivities.find(a => a.activity_id === actId);
-    if (!act) return;
+function renderPinTable(activities) {
+    const tableBody = document.getElementById('pinTableBody');
+    if (!activities || activities.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4">No approved activities found.</td></tr>`;
+        return;
+    }
 
-    document.getElementById('pinActivityId').value = act.activity_id;
-    document.getElementById('pinActivityTitle').textContent = act.title;
-    document.getElementById('timeInPin').value = act.time_in_passcode || '';
-    document.getElementById('timeOutPin').value = act.time_out_passcode || '';
+    tableBody.innerHTML = activities.map(act => `
+        <tr>
+            <td>
+                <strong class="d-block text-dark">${act.title}</strong>
+                <small class="text-muted"><i class="bi bi-geo-alt me-1"></i>${act.location || 'Vinzons'}</small>
+            </td>
+            <td>
+                <span class="badge bg-light text-secondary border">
+                    ${act.dept_name || 'Main LGU Office'}
+                </span>
+            </td>
+            <td><i class="bi bi-calendar-event me-1 text-primary"></i>${act.target_date ? act.target_date.split('T')[0] : 'N/A'}</td>
+            <td>
+                <span class="badge bg-success fs-5 px-3 py-2" style="font-family: monospace; letter-spacing: 0.15rem;">
+                    ${act.live_time_in_pin}
+                </span>
+            </td>
+            <td>
+                <span class="badge bg-info text-dark fs-5 px-3 py-2" style="font-family: monospace; letter-spacing: 0.15rem;">
+                    ${act.live_time_out_pin}
+                </span>
+            </td>
+            <td class="text-end">
+                <button class="btn btn-sm btn-outline-primary fw-bold" onclick="openDisplayModal(${act.activity_id})">
+                    <i class="bi bi-display me-1"></i> Project Screen
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
 
-    const modal = new bootstrap.Modal(document.getElementById('pinModal'));
+function openDisplayModal(actId) {
+    activeDisplayActId = actId;
+    updateDisplayModalData();
+    const modal = new bootstrap.Modal(document.getElementById('displayPinModal'));
     modal.show();
 }
 
-function autoGeneratePins() {
-    document.getElementById('timeInPin').value = Math.floor(1000 + Math.random() * 9000);
-    document.getElementById('timeOutPin').value = Math.floor(1000 + Math.random() * 9000);
+function updateDisplayModalData() {
+    if (!activeDisplayActId) return;
+    const act = loadedActivities.find(a => a.activity_id === activeDisplayActId);
+    if (!act) return;
+
+    document.getElementById('dispActivityTitle').textContent = act.title;
+    document.getElementById('dispActivityLocation').textContent = `${act.location || 'Vinzons'} • ${act.dept_name || 'Main LGU Office'}`;
+    document.getElementById('dispTimeInPin').textContent = act.live_time_in_pin;
+    document.getElementById('dispTimeOutPin').textContent = act.live_time_out_pin;
 }
 
-document.getElementById('pinForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const token = localStorage.getItem('token');
+// Synchronized 30-second countdown tick
+let lastStep = Math.floor(Date.now() / 30000);
 
-    const activity_id = document.getElementById('pinActivityId').value;
-    const time_in_passcode = document.getElementById('timeInPin').value;
-    const time_out_passcode = document.getElementById('timeOutPin').value;
+function startPinTicker() {
+    fetchLivePins();
 
-    try {
-        const res = await fetch('/api/lgu/attendance/pins', {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ activity_id, time_in_passcode, time_out_passcode })
-        });
-        const data = await res.json();
+    setInterval(() => {
+        const nowSec = Math.floor(Date.now() / 1000);
+        const currentStep = Math.floor(Date.now() / 30000);
+        const remaining = 30 - (nowSec % 30);
+        const pct = (remaining / 30) * 100;
 
-        const modalEl = document.getElementById('pinModal');
-        const modal = bootstrap.Modal.getInstance(modalEl);
-        if (modal) modal.hide();
+        const barClass = remaining <= 7 ? 'bg-danger' : 'bg-primary';
+        const badgeClass = remaining <= 7 ? 'bg-danger' : 'bg-primary';
 
-        if (res.ok) {
-            showAlert('success', data.message || 'Attendance PINs updated successfully! Distribute these to students on-site.');
-            loadPinActivities();
-        } else {
-            showAlert('danger', data.error || data.message || 'Failed to update attendance PINs.');
+        const cdText = document.getElementById('countdownText');
+        const cdProg = document.getElementById('countdownProgress');
+        if (cdText && cdProg) {
+            cdText.textContent = `${remaining}s`;
+            cdText.className = `badge ${badgeClass} fw-bold`;
+            cdProg.style.width = `${pct}%`;
+            cdProg.className = `progress-bar ${barClass}`;
         }
-    } catch (err) {
-        console.error('Save PINs error:', err);
-    }
-});
 
-function showAlert(type, msg) {
-    document.getElementById('alertContainer').innerHTML = `
-        <div class="alert alert-${type} alert-dismissible fade show py-2 small mb-4" role="alert">
-            <i class="bi bi-check-circle-fill me-1"></i>${msg}
-            <button type="button" class="btn-close py-2" data-bs-dismiss="alert"></button>
-        </div>
-    `;
+        const mText = document.getElementById('modalCountdownText');
+        const mProg = document.getElementById('modalCountdownProgress');
+        if (mText && mProg) {
+            mText.textContent = `${remaining}s`;
+            mProg.style.width = `${pct}%`;
+        }
+
+        // Automatically fetch new PINs when the 30-second window rolls over
+        if (currentStep !== lastStep) {
+            lastStep = currentStep;
+            fetchLivePins();
+        }
+    }, 1000);
 }
 
 document.getElementById('logoutBtn').addEventListener('click', () => {
@@ -288,7 +294,15 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
     window.location.href = '/index.html';
 });
 
-document.addEventListener('DOMContentLoaded', loadPinActivities);
+document.addEventListener('DOMContentLoaded', () => {
+    startPinTicker();
+    const dispModalEl = document.getElementById('displayPinModal');
+    if (dispModalEl) {
+        dispModalEl.addEventListener('hidden.bs.modal', () => {
+            activeDisplayActId = null;
+        });
+    }
+});
 </script>
 </body>
 </html>

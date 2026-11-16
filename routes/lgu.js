@@ -1,7 +1,20 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 const pool = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
+
+const PIN_SECRET = process.env.JWT_SECRET || 'collabnet_secret_key_2026';
+
+function generateRotatingPin(activityId, type) {
+  const timeStep = Math.floor(Date.now() / 30000);
+  const hmac = crypto
+    .createHmac('sha256', PIN_SECRET)
+    .update(`${activityId}:${type}:${timeStep}`)
+    .digest('hex');
+  const num = parseInt(hmac.substring(0, 8), 16) % 10000;
+  return num.toString().padStart(4, '0');
+}
 
 // Security Guard: Restrict exclusively to LGU Vinzons / Agency Admins
 router.use(requireAuth, requireRole('Agency Admin'));
@@ -213,6 +226,37 @@ router.get('/pin-activities', async (req, res) => {
   } catch (err) {
     console.error('Fetch PIN Activities Error:', err);
     res.status(500).json({ error: 'Failed to retrieve activities for PIN management.' });
+  }
+});
+
+// --- 4B. GET LIVE 30-SECOND ROTATING ATTENDANCE PINS ---
+router.get('/attendance/live-pins', async (req, res) => {
+  try {
+    const query = `
+      SELECT p.activity_id, p.title, p.target_date, p.location, p.estimated_hours,
+             COALESCE(d.dept_name, 'Main LGU Office') AS dept_name
+      FROM programs_activities p
+      LEFT JOIN lgu_departments d ON p.dept_id = d.dept_id
+      WHERE p.status = 'Approved'
+      ORDER BY p.activity_id DESC
+    `;
+    const { rows } = await pool.query(query);
+
+    const secondsRemaining = 30 - (Math.floor(Date.now() / 1000) % 30);
+    const activitiesWithLivePins = rows.map(act => ({
+      ...act,
+      live_time_in_pin: generateRotatingPin(act.activity_id, 'IN'),
+      live_time_out_pin: generateRotatingPin(act.activity_id, 'OUT')
+    }));
+
+    res.json({
+      success: true,
+      secondsRemaining,
+      activities: activitiesWithLivePins
+    });
+  } catch (err) {
+    console.error('Live Rotating PINs Error:', err);
+    res.status(500).json({ error: 'Failed to generate live 30-second PINs.' });
   }
 });
 

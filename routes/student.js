@@ -1,15 +1,38 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 const db = require('../db');
 const { verifyToken } = require('../middleware/auth');
 const { generateCertificatePDF } = require('../utils/pdfGenerator');
 
-// GET: Fetch Student Dashboard Metrics & Recent Activities (No Notifications)
+const PIN_SECRET = process.env.JWT_SECRET || 'collabnet_secret_key_2026';
+
+// Helper: Generate a deterministic 4-digit PIN for a 30-second time window
+function generateRotatingPin(activityId, type, stepOffset = 0) {
+    const timeStep = Math.floor(Date.now() / 30000) + stepOffset;
+    const hmac = crypto
+        .createHmac('sha256', PIN_SECRET)
+        .update(`${activityId}:${type}:${timeStep}`)
+        .digest('hex');
+    const num = parseInt(hmac.substring(0, 8), 16) % 10000;
+    return num.toString().padStart(4, '0');
+}
+
+// Helper: Verify 30-second rotating PIN (allows current 30s window or immediate previous 30s window for clock/typing grace)
+function verifyRotatingPin(activityId, type, submittedPin) {
+    const cleanPin = (submittedPin || '').trim();
+    if (!/^\d{4}$/.test(cleanPin)) return false;
+
+    const currentPin = generateRotatingPin(activityId, type, 0);
+    const previousPin = generateRotatingPin(activityId, type, -1);
+    return cleanPin === currentPin || cleanPin === previousPin;
+}
+
+// GET: Fetch Student Dashboard Metrics & Recent Activities
 router.get('/dashboard', verifyToken, async (req, res) => {
     const user_id = req.user.user_id;
 
     try {
-        // 1. Calculate Service Hours & Joined Count
         const statsRes = await db.query(
             `SELECT 
                 COUNT(*) AS joined_count,
@@ -20,7 +43,6 @@ router.get('/dashboard', verifyToken, async (req, res) => {
         );
         const stats = statsRes.rows[0];
 
-        // 2. Fetch Recent Activities with Join & Attendance Status
         const activitiesRes = await db.query(
             `SELECT a.activity_id, a.title, a.target_date, a.description, a.status, a.estimated_hours,
                     (p.participant_id IS NOT NULL) AS is_joined,
@@ -30,7 +52,7 @@ router.get('/dashboard', verifyToken, async (req, res) => {
              FROM programs_activities a
              LEFT JOIN activity_participants p ON a.activity_id = p.activity_id AND p.user_id = $1
              WHERE a.status IN ('Approved', 'Completed')
-             ORDER BY a.target_date DESC LIMIT 4`,
+             ORDER BY a.activity_id DESC LIMIT 4`,
             [user_id]
         );
 
@@ -52,7 +74,6 @@ router.get('/profile', verifyToken, async (req, res) => {
     const user_id = req.user.user_id;
 
     try {
-        // 1. Fetch User Profile
         const userRes = await db.query(
             `SELECT user_id, full_name, email, student_id, course, verification_status 
              FROM users WHERE user_id = $1`,
@@ -65,7 +86,6 @@ router.get('/profile', verifyToken, async (req, res) => {
 
         const user = userRes.rows[0];
 
-        // 2. Fetch Hours and Activity Stats
         const statsRes = await db.query(
             `SELECT 
                 COUNT(*) AS joined_count,
@@ -76,7 +96,6 @@ router.get('/profile', verifyToken, async (req, res) => {
         );
         const stats = statsRes.rows[0];
 
-        // 3. Fetch Earned Certificates Gallery Records
         const certsRes = await db.query(
             `SELECT 
                 p.participant_id,
@@ -124,12 +143,15 @@ router.get('/profile', verifyToken, async (req, res) => {
     }
 });
 
-// GET: Fetch All Approved Extension Activities for Student Activities Page
+// GET: Fetch All Approved Extension Activities with Course Policy & Past-Date Checks
 router.get('/activities', verifyToken, async (req, res) => {
     const user_id = req.user.user_id;
-    const user_course = req.user.course || req.user.target_course;
 
     try {
+        // Fetch student's actual registered course from database
+        const studentRes = await db.query('SELECT course FROM users WHERE user_id = $1', [user_id]);
+        const user_course = studentRes.rows[0]?.course ? studentRes.rows[0].course.trim() : '';
+
         const query = `
             SELECT 
                 a.activity_id,
@@ -140,26 +162,36 @@ router.get('/activities', verifyToken, async (req, res) => {
                 a.estimated_hours,
                 a.max_volunteers,
                 a.target_course,
+                (SELECT COUNT(*) FROM activity_participants ap WHERE ap.activity_id = a.activity_id)::int AS current_volunteers,
                 (p.participant_id IS NOT NULL) AS is_joined,
                 CASE 
-                    WHEN a.target_course = 'All Courses' OR a.target_course = $2 THEN true 
+                    WHEN LOWER(TRIM(COALESCE(a.target_course, 'All Courses'))) = 'all courses' 
+                         OR LOWER(TRIM(COALESCE(a.target_course, ''))) = LOWER($2) THEN true 
                     ELSE false 
-                END AS is_eligible
+                END AS is_eligible,
+                CASE 
+                    WHEN DATE(a.target_date) < (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila')::date THEN true 
+                    ELSE false 
+                END AS is_past_date
             FROM programs_activities a
             LEFT JOIN activity_participants p ON a.activity_id = p.activity_id AND p.user_id = $1
             WHERE a.status = 'Approved'
-            ORDER BY a.target_date ASC
+            ORDER BY is_past_date ASC, a.target_date ASC, a.activity_id DESC
         `;
         const result = await db.query(query, [user_id, user_course]);
 
-        return res.json({ success: true, activities: result.rows });
+        return res.json({
+            success: true,
+            student_course: user_course,
+            activities: result.rows
+        });
     } catch (err) {
         console.error('Fetch Activities Error:', err);
         return res.status(500).json({ success: false, message: 'Failed to fetch activities list.' });
     }
 });
 
-// POST: Join or Leave an Extension Activity (Protected against leaving completed/issued activities)
+// POST: Join or Leave an Extension Activity (Enforces Course Restriction, Backdate Block, and Capacity)
 router.post('/activities/join', verifyToken, async (req, res) => {
     const { activity_id, action } = req.body;
     const user_id = req.user.user_id;
@@ -170,7 +202,6 @@ router.post('/activities/join', verifyToken, async (req, res) => {
 
     try {
         if (action === 'leave') {
-            // Check if student has already completed target hours or been issued a certificate
             const checkQuery = `
                 SELECT 
                     participant_id, 
@@ -189,7 +220,6 @@ router.post('/activities/join', verifyToken, async (req, res) => {
 
             const participant = checkRes.rows[0];
 
-            // Block leaving if certificate is earned, issued, or target reached
             if (participant.certificate_issued || participant.target_reached || participant.is_eligible_for_cert) {
                 return res.status(400).json({ 
                     success: false, 
@@ -197,7 +227,6 @@ router.post('/activities/join', verifyToken, async (req, res) => {
                 });
             }
 
-            // Otherwise, process normal cancellation/leaving
             await db.query(
                 `DELETE FROM activity_participants WHERE activity_id = $1 AND user_id = $2`,
                 [activity_id, user_id]
@@ -206,16 +235,68 @@ router.post('/activities/join', verifyToken, async (req, res) => {
         }
 
         // --- JOIN ACTIVITY LOGIC ---
+        // 1. Fetch Student Course
+        const studentRes = await db.query(
+            `SELECT course, is_verified FROM users WHERE user_id = $1`,
+            [user_id]
+        );
+        if (studentRes.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Student account not found.' });
+        }
+        const studentCourse = (studentRes.rows[0].course || '').trim();
+
+        // 2. Fetch Activity Details & Check Past-Date Status in DB
         const targetActRes = await db.query(
-            `SELECT activity_id, title, target_date FROM programs_activities WHERE activity_id = $1`,
+            `SELECT activity_id, title, target_date, target_course, max_volunteers, status,
+                    (DATE(target_date) < (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila')::date) AS is_past_date,
+                    (SELECT COUNT(*) FROM activity_participants WHERE activity_id = $1)::int AS current_volunteers
+             FROM programs_activities 
+             WHERE activity_id = $1`,
             [activity_id]
         );
         if (targetActRes.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'Activity not found.' });
         }
         const targetAct = targetActRes.rows[0];
-        const targetDate = new Date(targetAct.target_date).toISOString().split('T')[0];
 
+        if (targetAct.status !== 'Approved') {
+            return res.status(400).json({
+                success: false,
+                message: 'This activity is not currently open for student registration.'
+            });
+        }
+
+        // 3. Enforce Backdating Prevention (Cannot join past/completed dates)
+        if (targetAct.is_past_date) {
+            const pastStr = new Date(targetAct.target_date).toISOString().split('T')[0];
+            return res.status(400).json({
+                success: false,
+                message: `Registration Closed: '${targetAct.title}' was scheduled on ${pastStr} and can no longer be joined.`
+            });
+        }
+
+        // 4. Enforce Restricted Course Policy
+        const requiredCourse = (targetAct.target_course || 'All Courses').trim();
+        if (
+            requiredCourse.toLowerCase() !== 'all courses' &&
+            requiredCourse.toLowerCase() !== studentCourse.toLowerCase()
+        ) {
+            return res.status(403).json({
+                success: false,
+                message: `Course Restricted: This activity is strictly for ${requiredCourse} students. Your registered program is ${studentCourse || 'Unassigned'}.`
+            });
+        }
+
+        // 5. Enforce Max Volunteer Capacity
+        if (targetAct.max_volunteers && targetAct.current_volunteers >= targetAct.max_volunteers) {
+            return res.status(400).json({
+                success: false,
+                message: `Activity Full: Maximum capacity of ${targetAct.max_volunteers} volunteers has already been reached.`
+            });
+        }
+
+        // 6. Enforce Same-Day Schedule Conflict Check
+        const targetDate = new Date(targetAct.target_date).toISOString().split('T')[0];
         const conflictRes = await db.query(
             `SELECT a.title 
              FROM activity_participants p
@@ -280,7 +361,7 @@ router.get('/attendance-list', verifyToken, async (req, res) => {
     }
 });
 
-// POST: Time-In Venue PIN Submission
+// POST: Time-In Venue PIN Submission (Validates 30-Second Rotating PIN)
 router.post('/time-in', verifyToken, async (req, res) => {
     const { activity_id, pin } = req.body;
     const user_id = req.user.user_id;
@@ -291,7 +372,7 @@ router.post('/time-in', verifyToken, async (req, res) => {
 
     try {
         const actResult = await db.query(
-            `SELECT activity_id, title, time_in_passcode FROM programs_activities WHERE activity_id = $1`,
+            `SELECT activity_id, title, status FROM programs_activities WHERE activity_id = $1`,
             [activity_id]
         );
 
@@ -300,8 +381,11 @@ router.post('/time-in', verifyToken, async (req, res) => {
         }
         const activity = actResult.rows[0];
 
-        if (activity.time_in_passcode !== pin.trim()) {
-            return res.status(400).json({ success: false, message: 'Invalid Time-In PIN! Please ask the venue coordinator.' });
+        if (!verifyRotatingPin(activity.activity_id, 'IN', pin)) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Invalid or expired Time-In PIN! PINs refresh every 30 seconds—check the coordinator screen.' 
+            });
         }
 
         const partResult = await db.query(
@@ -329,7 +413,7 @@ router.post('/time-in', verifyToken, async (req, res) => {
     }
 });
 
-// POST: Time-Out Venue PIN Submission with Early Out Detection
+// POST: Time-Out Venue PIN Submission (Validates 30-Second Rotating PIN + Early Out Detection)
 router.post('/time-out', verifyToken, async (req, res) => {
     const { activity_id, pin, early_out_reason } = req.body;
     const user_id = req.user.user_id;
@@ -340,7 +424,7 @@ router.post('/time-out', verifyToken, async (req, res) => {
 
     try {
         const actResult = await db.query(
-            `SELECT activity_id, title, estimated_hours, time_out_passcode 
+            `SELECT activity_id, title, estimated_hours 
              FROM programs_activities WHERE activity_id = $1`,
             [activity_id]
         );
@@ -350,8 +434,11 @@ router.post('/time-out', verifyToken, async (req, res) => {
         }
         const activity = actResult.rows[0];
 
-        if (activity.time_out_passcode !== pin.trim()) {
-            return res.status(400).json({ success: false, message: 'Invalid Time-Out PIN! Please ask the venue coordinator.' });
+        if (!verifyRotatingPin(activity.activity_id, 'OUT', pin)) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Invalid or expired Time-Out PIN! PINs refresh every 30 seconds—check the coordinator screen.' 
+            });
         }
 
         const partResult = await db.query(
@@ -449,12 +536,10 @@ router.get('/certificate/download/:participant_id', verifyToken, async (req, res
 
         const record = result.rows[0];
 
-        // Generate or reuse certificate number
         let certNo = record.certificate_no;
         if (!certNo) {
             certNo = `CERT-2026-${record.participant_id.toString().padStart(5, '0')}`;
             
-            // Save/Update certificate_no in PostgreSQL database
             await db.query(
                 `UPDATE activity_participants 
                  SET certificate_no = $1, certificate_issued = TRUE 

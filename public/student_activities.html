@@ -24,6 +24,7 @@
                 <small class="text-white-50 text-uppercase fw-semibold" style="font-size: 0.65rem;">OLLCF Extension Office</small>
                 <h5 class="fw-bold mb-0 text-white">Outreach Activities</h5>
             </div>
+            <span id="studentCourseBadge" class="badge bg-light text-primary fw-bold px-2 py-1" style="font-size: 0.7rem;">--</span>
         </div>
     </div>
 
@@ -68,16 +69,16 @@
     </nav>
 </div>
 
-<!-- Schedule Conflict Error Pop-Up Modal -->
+<!-- Restriction / Schedule Conflict Pop-Up Modal -->
 <div class="modal fade" id="conflictModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered px-3">
         <div class="modal-content border-0 shadow-lg rounded-4 text-center p-3">
             <div class="modal-body">
                 <div class="text-danger mb-3">
-                    <i class="bi bi-calendar-x-fill display-3"></i>
+                    <i class="bi bi-exclamation-octagon-fill display-3"></i>
                 </div>
-                <h5 class="fw-bold text-dark mb-2">Schedule Conflict</h5>
-                <p class="text-muted small mb-4" id="conflictModalMessage">You are already registered for another activity on this date.</p>
+                <h5 class="fw-bold text-dark mb-2">Registration Not Allowed</h5>
+                <p class="text-muted small mb-4" id="conflictModalMessage">You cannot register for this activity.</p>
                 <button type="button" class="btn btn-danger fw-bold px-4 py-2 rounded-pill w-100" data-bs-dismiss="modal">
                     Understand & Close
                 </button>
@@ -113,6 +114,10 @@ async function loadActivities() {
         const data = await response.json();
         if (!data.success) return;
 
+        if (data.student_course) {
+            document.getElementById('studentCourseBadge').textContent = data.student_course;
+        }
+
         allActivities = data.activities || [];
         renderActivities();
     } catch (err) {
@@ -140,6 +145,8 @@ function renderActivities() {
 
     container.innerHTML = list.map(act => {
         const formattedDate = act.target_date ? new Date(act.target_date).toISOString().split('T')[0] : 'N/A';
+        const isPast = Boolean(act.is_past_date);
+        const isFull = act.max_volunteers && act.current_volunteers >= act.max_volunteers;
 
         let actionBtn = '';
         if (act.is_joined) {
@@ -148,27 +155,40 @@ function renderActivities() {
                     <i class="bi bi-x-circle me-1"></i> Leave Activity
                 </button>
             `;
-        } else if (act.is_eligible) {
+        } else if (isPast) {
+            actionBtn = `
+                <button class="btn btn-sm btn-secondary fw-semibold py-1 px-3 disabled" style="font-size: 0.75rem;">
+                    <i class="bi bi-calendar-x me-1"></i> Event Ended
+                </button>
+            `;
+        } else if (!act.is_eligible) {
+            actionBtn = `
+                <button class="btn btn-sm btn-secondary fw-semibold py-1 px-3 disabled" style="font-size: 0.75rem;">
+                    <i class="bi bi-lock-fill me-1"></i>Restricted (${act.target_course})
+                </button>
+            `;
+        } else if (isFull) {
+            actionBtn = `
+                <button class="btn btn-sm btn-secondary fw-semibold py-1 px-3 disabled" style="font-size: 0.75rem;">
+                    Slots Full
+                </button>
+            `;
+        } else {
             actionBtn = `
                 <button onclick="toggleJoin(${act.activity_id}, 'join')" class="btn btn-sm btn-primary fw-bold py-1 px-3" style="font-size: 0.75rem;">
                     <i class="bi bi-plus-circle me-1"></i> Join Activity
                 </button>
             `;
-        } else {
-            actionBtn = `
-                <button class="btn btn-sm btn-secondary fw-semibold py-1 px-3 disabled" style="font-size: 0.75rem;">
-                    Restricted (${act.target_course})
-                </button>
-            `;
         }
 
         return `
-            <div class="student-action-card mb-3">
+            <div class="student-action-card mb-3 ${isPast && !act.is_joined ? 'opacity-75' : ''}">
                 <div class="d-flex justify-content-between align-items-start mb-2">
                     <div>
                         <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 mb-1" style="font-size: 0.65rem;">
                             Target: ${act.target_course || 'All Courses'}
                         </span>
+                        ${isPast ? `<span class="badge bg-secondary ms-1" style="font-size: 0.65rem;">Past Date</span>` : ''}
                         <h6 class="fw-bold text-dark mb-0">${act.title}</h6>
                     </div>
                 </div>
@@ -182,7 +202,9 @@ function renderActivities() {
                 </div>
 
                 <div class="d-flex justify-content-between align-items-center pt-2 border-top">
-                    <small class="text-muted" style="font-size: 0.7rem;">Max Capacity: <strong>${act.max_volunteers || 20} slots</strong></small>
+                    <small class="text-muted" style="font-size: 0.7rem;">
+                        Slots: <strong>${act.current_volunteers || 0}/${act.max_volunteers || 20}</strong>
+                    </small>
                     ${actionBtn}
                 </div>
             </div>
