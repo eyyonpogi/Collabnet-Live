@@ -35,12 +35,12 @@ router.get('/dashboard', async (req, res) => {
       "SELECT COUNT(*) as count FROM programs_activities WHERE status = 'Approved'"
     );
 
-    // Queue Feeds: Pending Proposals & Pending Student Reviews
+    // Queue Feeds: Pending Proposals & Pending Student Reviews (Indexed newest first)
     const proposalsFeed = await pool.query(
-      "SELECT activity_id, title, target_course, location, target_date FROM programs_activities WHERE status = 'Pending' ORDER BY target_date ASC LIMIT 5"
+      "SELECT activity_id, title, target_course, location, target_date FROM programs_activities WHERE status = 'Pending' ORDER BY activity_id DESC LIMIT 5"
     );
     const studentsFeed = await pool.query(
-      "SELECT user_id, full_name, student_id, course FROM users WHERE role = 'Student' AND verification_status = 'Pending' LIMIT 5"
+      "SELECT user_id, full_name, student_id, course FROM users WHERE role = 'Student' AND verification_status = 'Pending' ORDER BY user_id DESC LIMIT 5"
     );
 
     res.json({
@@ -66,10 +66,18 @@ router.get('/dashboard', async (req, res) => {
 router.get('/students', async (req, res) => {
   try {
     const pending = await pool.query(
-      "SELECT user_id, full_name, student_id, course, email, verification_status FROM users WHERE role = 'Student' AND verification_status = 'Pending' ORDER BY user_id DESC"
+      `SELECT user_id, full_name, student_id, course, email, verification_status, 
+              verification_doc_name, (verification_doc IS NOT NULL) AS has_doc, created_at
+       FROM users 
+       WHERE role = 'Student' AND verification_status = 'Pending' 
+       ORDER BY user_id DESC`
     );
     const verified = await pool.query(
-      "SELECT user_id, full_name, student_id, course, email, verification_status FROM users WHERE role = 'Student' AND verification_status = 'Approved' ORDER BY full_name ASC"
+      `SELECT user_id, full_name, student_id, course, email, verification_status, 
+              verification_doc_name, (verification_doc IS NOT NULL) AS has_doc, created_at
+       FROM users 
+       WHERE role = 'Student' AND verification_status = 'Approved' 
+       ORDER BY user_id DESC`
     );
 
     res.json({
@@ -83,10 +91,41 @@ router.get('/students', async (req, res) => {
   }
 });
 
+// GET: View Full Student Details & Uploaded School ID / COR Before Approval
+router.get('/students/:userId', async (req, res) => {
+  const userId = parseInt(req.params.userId, 10);
+
+  if (!userId) {
+    return res.status(400).json({ error: 'Invalid student user ID.' });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT user_id, full_name, student_id, course, email, verification_status, 
+              verification_doc, verification_doc_name, created_at
+       FROM users 
+       WHERE user_id = $1 AND role = 'Student'`,
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Student record not found.' });
+    }
+
+    res.json({
+      success: true,
+      student: result.rows[0]
+    });
+  } catch (err) {
+    console.error('Fetch Student Details Error:', err);
+    res.status(500).json({ error: 'Failed to load student details.' });
+  }
+});
+
 // Approve or Reject Student Verification
 router.post('/students/verify', async (req, res) => {
   const { user_id, action } = req.body;
-  const adminId = req.session.user_id;
+  const adminId = req.session?.user_id || req.user?.user_id;
 
   if (!user_id || !['approve', 'reject'].includes(action)) {
     return res.status(400).json({ error: 'Invalid student user ID or verification action.' });
@@ -145,7 +184,7 @@ router.get('/activities', async (req, res) => {
 // --- 4. EXTENSION ACTIVITY PROPOSALS EVALUATION ---
 router.post('/activities/evaluate', async (req, res) => {
   const { activity_id, decision, rejection_reason } = req.body;
-  const adminId = req.session.user_id || req.session.userId;
+  const adminId = req.session?.user_id || req.user?.user_id;
 
   if (!activity_id || !['approve', 'reject'].includes(decision)) {
     return res.status(400).json({ error: 'Invalid activity ID or evaluation decision.' });
@@ -164,7 +203,8 @@ router.post('/activities/evaluate', async (req, res) => {
       [statusVal, reasonText, activity_id]
     );
 
-    let logText = `Extension Activity ID #${activity_id} was ${statusVal.toLowerCase()} by ${req.session.full_name || 'Extension Director'}`;
+    const reviewerName = req.session?.full_name || req.user?.full_name || 'Extension Director';
+    let logText = `Extension Activity ID #${activity_id} was ${statusVal.toLowerCase()} by ${reviewerName}`;
     if (decision === 'reject') {
       logText += `. Reason: ${reasonText}`;
     }
@@ -212,7 +252,7 @@ router.get('/attendance/audit/:activityId', async (req, res) => {
       JOIN users u ON ap.user_id = u.user_id
       JOIN programs_activities p ON ap.activity_id = p.activity_id
       WHERE ap.activity_id = $1
-      ORDER BY u.full_name ASC
+      ORDER BY ap.participant_id DESC
     `;
     const participantsRes = await pool.query(participantsQuery, [activityId]);
 
@@ -256,7 +296,7 @@ router.get('/activities/approved', async (req, res) => {
       SELECT activity_id, title, target_date, target_course, estimated_hours
       FROM programs_activities
       WHERE status = 'Approved'
-      ORDER BY target_date DESC
+      ORDER BY activity_id DESC
     `;
     const { rows } = await pool.query(query);
     res.json({ success: true, activities: rows });
@@ -291,7 +331,7 @@ router.get('/activities/list', async (req, res) => {
       params.push(status);
     }
 
-    query += ` ORDER BY p.target_date DESC`;
+    query += ` ORDER BY p.activity_id DESC`;
 
     const { rows } = await pool.query(query, params);
     

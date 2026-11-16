@@ -16,14 +16,14 @@
 </head>
 <body class="bg-light">
 
-<div class="landing-container">
+<div class="landing-container py-4">
     <div class="hero-header text-center">
         <h1 class="brand-title mb-1">Collab<span class="brand-accent">Net</span></h1>
         <p class="brand-subtitle mb-0">Vinzons LGU & OLLCF Portal</p>
     </div>
 
     <div class="login-card-wrapper">
-        <div class="login-card" style="max-width: 480px;">
+        <div class="login-card" style="max-width: 500px;">
             <h4 class="text-center fw-bold text-dark mb-1">Create Account</h4>
             <p class="text-center text-muted small mb-4">Student Portal Registration</p>
 
@@ -38,14 +38,15 @@
                 <input type="text" id="full_name" class="form-control" placeholder="Juan Dela Cruz" required>
               </div>
 
-              <div class="mb-3">
-                <label for="student_id" class="form-label fw-semibold">Student ID</label>
-                <input type="text" id="student_id" class="form-control" placeholder="XX-XXXX" required>
-              </div>
-
-              <div class="mb-3">
-                <label for="email" class="form-label fw-semibold">Email Address</label>
-                <input type="email" id="email" class="form-control" placeholder="student@ollcf.edu.ph" required>
+              <div class="row g-2 mb-3">
+                <div class="col-md-5">
+                  <label for="student_id" class="form-label fw-semibold">Student ID</label>
+                  <input type="text" id="student_id" class="form-control" placeholder="XX-XXXX" required>
+                </div>
+                <div class="col-md-7">
+                  <label for="email" class="form-label fw-semibold">OLLCF Email Address</label>
+                  <input type="email" id="email" class="form-control" placeholder="student@ollcf.edu.ph" required>
+                </div>
               </div>
 
               <div class="mb-3">
@@ -89,6 +90,24 @@
                 </select>
               </div>
 
+              <!-- Quick Student Verification Document Upload -->
+              <div class="mb-3">
+                <label for="verification_file" class="form-label fw-semibold">
+                    Proof of Enrollment (School ID or COR) <span class="text-danger">*</span>
+                </label>
+                <input type="file" id="verification_file" class="form-control" accept="image/*,.pdf" required>
+                <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">
+                    <i class="bi bi-shield-check text-primary me-1"></i>Upload a clear photo of your OLLCF School ID or current COR (JPG, PNG, or PDF, max 3MB) for fast admin verification.
+                </small>
+                <div id="docPreviewBox" class="mt-2 d-none border rounded-3 p-2 bg-light text-center">
+                    <img id="docImagePreview" src="" alt="ID Preview" class="img-fluid rounded d-none" style="max-height: 150px;">
+                    <div id="docPdfPreview" class="d-none text-primary small fw-semibold py-2">
+                        <i class="bi bi-file-earmark-pdf-fill fs-4 d-block"></i>
+                        <span id="docPdfName">document.pdf</span>
+                    </div>
+                </div>
+              </div>
+
               <!-- Password Input with Eye Icon -->
               <div class="mb-3">
                 <label for="password" class="form-label fw-semibold">Password</label>
@@ -111,7 +130,7 @@
                 </div>
               </div>
 
-              <button type="submit" class="btn btn-primary w-100 fw-bold">Register Account</button>
+              <button type="submit" id="registerBtn" class="btn btn-primary w-100 fw-bold py-2">Register Account</button>
             </form>
             
             <div class="text-center mt-3">
@@ -122,19 +141,84 @@
 </div>
 
 <script>
+let processedDocBase64 = null;
+let processedDocName = null;
+
 function togglePasswordVisibility(inputId, iconId) {
     const input = document.getElementById(inputId);
     const icon = document.getElementById(iconId);
-    
     if (input.type === 'password') {
         input.type = 'text';
-        icon.classList.remove('bi-eye-slash');
-        icon.classList.add('bi-eye');
+        icon.classList.replace('bi-eye-slash', 'bi-eye');
     } else {
         input.type = 'password';
-        icon.classList.remove('bi-eye');
-        icon.classList.add('bi-eye-slash');
+        icon.classList.replace('bi-eye', 'bi-eye-slash');
     }
+}
+
+// Handle Image Compression or PDF Base64 Conversion
+document.getElementById('verification_file').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    const previewBox = document.getElementById('docPreviewBox');
+    const imgPreview = document.getElementById('docImagePreview');
+    const pdfPreview = document.getElementById('docPdfPreview');
+
+    if (!file) {
+        processedDocBase64 = null;
+        previewBox.classList.add('d-none');
+        return;
+    }
+
+    if (file.size > 4 * 1024 * 1024) {
+        showError('File size exceeds 4MB limit. Please upload a smaller image or PDF.');
+        e.target.value = '';
+        return;
+    }
+
+    processedDocName = file.name;
+    previewBox.classList.remove('d-none');
+
+    if (file.type.startsWith('image/')) {
+        // Compress image via Canvas so DB stays fast
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 1000;
+                const scaleSize = img.width > MAX_WIDTH ? MAX_WIDTH / img.width : 1;
+                canvas.width = img.width * scaleSize;
+                canvas.height = img.height * scaleSize;
+
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                processedDocBase64 = canvas.toDataURL('image/jpeg', 0.75);
+
+                imgPreview.src = processedDocBase64;
+                imgPreview.classList.remove('d-none');
+                pdfPreview.classList.add('d-none');
+            };
+            img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+    } else {
+        // PDF file
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            processedDocBase64 = event.target.result;
+            document.getElementById('docPdfName').textContent = file.name;
+            pdfPreview.classList.remove('d-none');
+            imgPreview.classList.add('d-none');
+        };
+        reader.readAsDataURL(file);
+    }
+});
+
+function showError(msg) {
+    const errorAlert = document.getElementById('errorAlert');
+    document.getElementById('errorMessage').textContent = msg;
+    errorAlert.classList.remove('d-none');
+    errorAlert.classList.add('d-flex');
 }
 
 document.getElementById('registerForm').addEventListener('submit', async (e) => {
@@ -146,32 +230,49 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
   const course = document.getElementById('course').value;
   const password = document.getElementById('password').value;
   const confirm_password = document.getElementById('confirm_password').value;
+  const btn = document.getElementById('registerBtn');
 
   if (password !== confirm_password) {
-    const errorAlert = document.getElementById('errorAlert');
-    document.getElementById('errorMessage').textContent = 'Passwords do not match!';
-    errorAlert.classList.remove('d-none');
+    showError('Passwords do not match!');
+    return;
+  }
+
+  if (!processedDocBase64) {
+    showError('Please upload your School ID or COR document.');
     return;
   }
 
   try {
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span> Submitting Registration...`;
+
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ full_name, student_id, email, course, password })
+      body: JSON.stringify({ 
+        full_name, 
+        student_id, 
+        email, 
+        course, 
+        password,
+        verification_doc: processedDocBase64,
+        verification_doc_name: processedDocName
+      })
     });
     const data = await res.json();
 
     if (res.ok) {
-      alert(data.message || 'Registration submitted! Awaiting verification.');
+      alert(data.message || 'Registration submitted! Awaiting admin verification.');
       window.location.href = '/index.html';
     } else {
-      const errorAlert = document.getElementById('errorAlert');
-      document.getElementById('errorMessage').textContent = data.error || data.message || 'Registration failed.';
-      errorAlert.classList.remove('d-none');
+      showError(data.error || data.message || 'Registration failed.');
     }
   } catch (err) {
     console.error('Registration error:', err);
+    showError('Server error submitting registration.');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Register Account';
   }
 });
 </script>

@@ -85,9 +85,19 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// --- REGISTER ENDPOINT ---
+// --- REGISTER ENDPOINT (With School ID / COR Verification Attachment) ---
 router.post('/register', async (req, res) => {
-  const { full_name, email, password, role, student_id, course, agency_id } = req.body;
+  const { 
+    full_name, 
+    email, 
+    password, 
+    role, 
+    student_id, 
+    course, 
+    agency_id, 
+    verification_doc, 
+    verification_doc_name 
+  } = req.body;
 
   if (!full_name || !email || !password) {
     return res.status(400).json({ success: false, message: 'Full Name, Email, and Password are required.' });
@@ -96,6 +106,13 @@ router.post('/register', async (req, res) => {
   const cleanEmail = email.trim().toLowerCase();
   const cleanName = full_name.trim();
   const userRole = role || 'Student';
+
+  if (userRole === 'Student' && !verification_doc) {
+    return res.status(400).json({ 
+      success: false, 
+      message: 'Please upload a photo or PDF of your School ID or Certificate of Registration (COR).' 
+    });
+  }
 
   try {
     const emailCheck = await pool.query('SELECT user_id FROM users WHERE LOWER(email) = $1', [cleanEmail]);
@@ -113,10 +130,14 @@ router.post('/register', async (req, res) => {
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
     const is_verified = userRole === 'Student' ? false : true;
+    const verification_status = userRole === 'Student' ? 'Pending' : 'Approved';
 
     const insertQuery = `
-      INSERT INTO users (full_name, email, password, role, student_id, course, agency_id, is_verified)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO users (
+        full_name, email, password, role, student_id, course, agency_id, 
+        is_verified, verification_status, verification_doc, verification_doc_name
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING user_id, full_name, email, role, is_verified
     `;
 
@@ -127,8 +148,11 @@ router.post('/register', async (req, res) => {
       userRole,
       student_id ? student_id.trim() : null,
       course ? course.trim() : null,
-      agency_id ? parseInt(agency_id) : null,
-      is_verified
+      agency_id ? parseInt(agency_id, 10) : null,
+      is_verified,
+      verification_status,
+      verification_doc || null,
+      verification_doc_name || null
     ];
 
     const { rows } = await pool.query(insertQuery, values);
@@ -148,7 +172,7 @@ router.post('/register', async (req, res) => {
     res.status(201).json({
       success: true,
       message: userRole === 'Student' 
-        ? 'Account created! Registration is pending official enrollment verification.' 
+        ? 'Account created! Your School ID/COR has been submitted for Extension Office verification.' 
         : 'Account created successfully!',
       token: token,
       user: newUser
