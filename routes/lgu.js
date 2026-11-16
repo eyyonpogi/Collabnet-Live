@@ -20,12 +20,14 @@ router.get('/dashboard', async (req, res) => {
 
     // Fetch top 5 recent approved activities for quick dashboard viewing
     const approvedActivitiesQuery = `
-      SELECT p.*, d.dept_name,
+      SELECT p.activity_id, p.title, p.target_course, p.location, p.target_date, p.estimated_hours,
+             p.max_volunteers, p.status, p.proposal_doc_name, (p.proposal_doc IS NOT NULL) AS has_attachment,
+             d.dept_name,
              (SELECT COUNT(*) FROM activity_participants ap WHERE ap.activity_id = p.activity_id) AS total_joined
       FROM programs_activities p
       LEFT JOIN lgu_departments d ON p.dept_id = d.dept_id
       WHERE p.status = 'Approved'
-      ORDER BY p.target_date DESC LIMIT 5
+      ORDER BY p.activity_id DESC LIMIT 5
     `;
     const approvedActivities = await pool.query(approvedActivitiesQuery);
 
@@ -69,7 +71,10 @@ router.get('/activities', async (req, res) => {
   const { status } = req.query;
   try {
     let query = `
-      SELECT p.*, d.dept_name,
+      SELECT p.activity_id, p.title, p.description, p.target_course, p.location, 
+             p.target_date, p.estimated_hours, p.max_volunteers, p.status, p.rejection_reason,
+             p.proposal_doc_name, (p.proposal_doc IS NOT NULL) AS has_attachment,
+             d.dept_name,
              (SELECT COUNT(*) FROM activity_participants ap WHERE ap.activity_id = p.activity_id) AS total_joined
       FROM programs_activities p
       LEFT JOIN lgu_departments d ON p.dept_id = d.dept_id
@@ -81,7 +86,7 @@ router.get('/activities', async (req, res) => {
       params.push(status);
     }
 
-    query += ' ORDER BY p.target_date DESC';
+    query += ' ORDER BY p.activity_id DESC';
     const { rows } = await pool.query(query, params);
     res.json({ success: true, activities: rows });
   } catch (err) {
@@ -90,46 +95,55 @@ router.get('/activities', async (req, res) => {
   }
 });
 
-// --- 2. FETCH EXTENSION ACTIVITIES ---
-router.get('/activities', async (req, res) => {
-  const { status } = req.query;
-  try {
-    let query = `
-      SELECT p.*, d.dept_name 
-      FROM programs_activities p
-      LEFT JOIN lgu_departments d ON p.dept_id = d.dept_id
-    `;
-    let params = [];
+// GET: Download Proposal Attachment for LGU View
+router.get('/activities/:activityId/attachment', async (req, res) => {
+  const activityId = parseInt(req.params.activityId, 10);
+  if (!activityId) return res.status(400).json({ error: 'Invalid activity ID.' });
 
-    if (status && status !== 'All') {
-      query += ' WHERE p.status = $1';
-      params.push(status);
+  try {
+    const result = await pool.query(
+      'SELECT title, proposal_doc, proposal_doc_name FROM programs_activities WHERE activity_id = $1',
+      [activityId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Activity not found.' });
     }
 
-    query += ' ORDER BY p.target_date DESC';
-    const { rows } = await pool.query(query, params);
-    res.json({ success: true, activities: rows });
+    const row = result.rows[0];
+    if (!row.proposal_doc) {
+      return res.status(404).json({ error: 'No attachment uploaded for this activity.' });
+    }
+
+    res.json({
+      success: true,
+      title: row.title,
+      proposal_doc: row.proposal_doc,
+      proposal_doc_name: row.proposal_doc_name || 'Activity_Proposal_Attachment'
+    });
   } catch (err) {
-    console.error('Fetch LGU Activities Error:', err);
-    res.status(500).json({ error: err.message });
+    console.error('Fetch Activity Attachment Error:', err);
+    res.status(500).json({ error: 'Failed to load attachment.' });
   }
 });
 
-// Helper function: Submit proposed community extension activity with validity lifespan
+// Helper function: Submit proposed community extension activity with validity lifespan & attachment
 const handleProposeActivity = async (req, res) => {
-  const title           = req.body.title ? req.body.title.trim() : '';
-  const dept_id         = req.body.dept_id ? parseInt(req.body.dept_id, 10) : null;
-  const target_course   = req.body.target_course ? req.body.target_course.trim() : '';
-  const location        = req.body.location ? req.body.location.trim() : '';
-  const max_volunteers  = parseInt(req.body.max_volunteers, 10) || 0;
-  const estimated_hours = parseInt(req.body.estimated_hours, 10) || 0;
-  const target_date     = req.body.target_date ? req.body.target_date.trim() : '';
-  const description     = req.body.description ? req.body.description.trim() : '';
-  const agency_id       = req.body.agency_id ? parseInt(req.body.agency_id, 10) : null;
-  const lifespan_days   = req.body.lifespan_days ? parseInt(req.body.lifespan_days, 10) : 14;
+  const title             = req.body.title ? req.body.title.trim() : '';
+  const dept_id           = req.body.dept_id ? parseInt(req.body.dept_id, 10) : null;
+  const target_course     = req.body.target_course ? req.body.target_course.trim() : '';
+  const location          = req.body.location ? req.body.location.trim() : '';
+  const max_volunteers    = parseInt(req.body.max_volunteers, 10) || 0;
+  const estimated_hours   = parseInt(req.body.estimated_hours, 10) || 0;
+  const target_date       = req.body.target_date ? req.body.target_date.trim() : '';
+  const description       = req.body.description ? req.body.description.trim() : '';
+  const agency_id         = req.body.agency_id ? parseInt(req.body.agency_id, 10) : null;
+  const lifespan_days     = req.body.lifespan_days ? parseInt(req.body.lifespan_days, 10) : 14;
+  const proposal_doc      = req.body.proposal_doc || null;
+  const proposal_doc_name = req.body.proposal_doc_name ? req.body.proposal_doc_name.trim() : null;
 
   // Automatic Status: Always set to 'Pending' for OLLCF Extension Office review
-  const status          = 'Pending';
+  const status = 'Pending';
 
   if (!title || !target_date || !target_course) {
     return res.status(400).json({ error: "Title, Target Date, and Required Course are required fields." });
@@ -142,8 +156,8 @@ const handleProposeActivity = async (req, res) => {
 
     const insert_sql = `
       INSERT INTO programs_activities 
-      (title, dept_id, agency_id, target_course, location, max_volunteers, estimated_hours, description, target_date, status, expires_at) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      (title, dept_id, agency_id, target_course, location, max_volunteers, estimated_hours, description, target_date, status, expires_at, proposal_doc, proposal_doc_name) 
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING activity_id, expires_at
     `;
 
@@ -158,7 +172,9 @@ const handleProposeActivity = async (req, res) => {
       description, 
       target_date, 
       status,
-      expires_at
+      expires_at,
+      proposal_doc,
+      proposal_doc_name
     ];
 
     const { rows } = await pool.query(insert_sql, values);
@@ -180,7 +196,6 @@ router.post('/activities', handleProposeActivity);
 router.post('/activities/propose', handleProposeActivity);
 
 // --- 4. FETCH ALL APPROVED ACTIVITIES FOR VENUE PIN MANAGER ---
-// GET /api/lgu/pin-activities - Fetch ALL approved activities
 router.get('/pin-activities', async (req, res) => {
   try {
     const query = `
@@ -190,7 +205,7 @@ router.get('/pin-activities', async (req, res) => {
       FROM programs_activities p
       LEFT JOIN lgu_departments d ON p.dept_id = d.dept_id
       WHERE p.status = 'Approved'
-      ORDER BY p.target_date DESC
+      ORDER BY p.activity_id DESC
     `;
     const { rows } = await pool.query(query);
 

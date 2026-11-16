@@ -122,7 +122,7 @@
                                 <th>REQUIRED COURSE</th>
                                 <th>LOCATION</th>
                                 <th>TARGET DATE</th>
-                                <th>EST. HOURS</th>
+                                <th>ATTACHMENT</th>
                                 <th>STATUS</th>
                                 <th class="text-end">ACTIONS</th>
                             </tr>
@@ -144,7 +144,7 @@
       <div class="modal-header border-bottom-0 pb-0 d-flex justify-content-between align-items-start">
         <div>
           <h4 class="modal-title fw-bold text-dark mb-1">Propose Community Extension Activity</h4>
-          <p class="text-muted small mb-0">Submit an outreach project proposal to the OLLCF Extension Office for approval.</p>
+          <p class="text-muted small mb-0">Submit an outreach project proposal and supporting document to the OLLCF Extension Office.</p>
         </div>
         <span class="badge bg-warning bg-opacity-25 text-dark border border-warning px-2 py-1 small fw-semibold">Requires OLLCF Approval</span>
       </div>
@@ -225,6 +225,22 @@
             </div>
           </div>
 
+          <!-- Supporting Proposal Document Upload -->
+          <div class="mb-3">
+            <label for="act_proposal_file" class="form-label small fw-bold text-muted text-uppercase mb-1">
+              PROPOSAL ATTACHMENT / PROJECT BRIEF (PDF, DOCX, OR IMAGE) *
+            </label>
+            <input type="file" id="act_proposal_file" class="form-control" accept=".pdf,.doc,.docx,image/*" required>
+            <small class="form-text text-muted">
+              <i class="bi bi-paperclip text-primary me-1"></i>Attach the formal activity proposal, letter of request, or program schedule (max 5MB) for School Admin review.
+            </small>
+            <div id="attachmentBadgeBox" class="mt-2 d-none">
+              <span class="badge bg-primary bg-opacity-10 text-primary border border-primary px-2 py-1">
+                <i class="bi bi-file-earmark-check-fill me-1"></i><span id="attachmentFileNameLabel">Ready</span>
+              </span>
+            </div>
+          </div>
+
           <div class="mb-3">
             <label for="act_lifespan_days" class="form-label small fw-bold text-muted text-uppercase mb-1">PROPOSAL LIFESPAN (VALIDITY PERIOD)</label>
             <select id="act_lifespan_days" class="form-select">
@@ -244,7 +260,7 @@
 
         <div class="modal-footer border-top-0 pt-0 justify-content-between">
           <button type="button" class="btn btn-outline-secondary px-3" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="btn btn-primary fw-bold px-4">
+          <button type="submit" id="submitProposalBtn" class="btn btn-primary fw-bold px-4">
             <i class="bi bi-send-fill me-1"></i> Submit Proposal
           </button>
         </div>
@@ -285,6 +301,7 @@
                         </div>
                     </div>
                 </div>
+                <div id="modalAttachmentSection" class="mb-3"></div>
                 <div id="modalDescription" class="text-muted small mb-0" style="line-height: 1.6;">--</div>
             </div>
             <div class="modal-footer border-top-0 pt-0">
@@ -298,6 +315,57 @@
 <script>
 let currentStatusFilter = 'Pending';
 let loadedActivities = [];
+let proposalFileBase64 = null;
+let proposalFileName = null;
+
+// Process file attachment (compress images, read PDF/DOCX as Data URI)
+document.getElementById('act_proposal_file').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    const badgeBox = document.getElementById('attachmentBadgeBox');
+    const nameLabel = document.getElementById('attachmentFileNameLabel');
+
+    if (!file) {
+        proposalFileBase64 = null;
+        proposalFileName = null;
+        badgeBox.classList.add('d-none');
+        return;
+    }
+
+    if (file.size > 6 * 1024 * 1024) {
+        showAlert('danger', 'Attachment exceeds 6MB limit. Please upload a smaller file.');
+        e.target.value = '';
+        return;
+    }
+
+    proposalFileName = file.name;
+    nameLabel.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+    badgeBox.classList.remove('d-none');
+
+    if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 1200;
+                const scale = img.width > MAX_WIDTH ? MAX_WIDTH / img.width : 1;
+                canvas.width = img.width * scale;
+                canvas.height = img.height * scale;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                proposalFileBase64 = canvas.toDataURL('image/jpeg', 0.8);
+            };
+            img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+    } else {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            proposalFileBase64 = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+});
 
 async function loadLguActivities(status = 'Pending') {
     currentStatusFilter = status;
@@ -311,7 +379,7 @@ async function loadLguActivities(status = 'Pending') {
     body.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm text-primary me-2"></div>Loading activities...</td></tr>`;
 
     try {
-        let res = await fetch(`/api/lgu/activities?status=${encodeURIComponent(status)}`, {
+        const res = await fetch(`/api/lgu/activities?status=${encodeURIComponent(status)}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         
@@ -322,25 +390,8 @@ async function loadLguActivities(status = 'Pending') {
             return;
         }
 
-        if (!res.ok) {
-            res = await fetch('/api/lgu/dashboard', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-        }
-
-        const contentType = res.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-            body.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-4">API endpoint route not found. Check server configuration.</td></tr>`;
-            return;
-        }
-
         const data = await res.json();
-        loadedActivities = data.activities || data.approvedActivities || [];
-
-        if (status !== 'All') {
-            loadedActivities = loadedActivities.filter(act => (act.status || 'Approved') === status);
-        }
-
+        loadedActivities = data.activities || [];
         renderActivitiesTable(loadedActivities);
     } catch (err) {
         console.error('Error fetching activities:', err);
@@ -355,9 +406,6 @@ async function loadLguDepartmentsDropdown() {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (!res.ok) return;
-
-        const contentType = res.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) return;
 
         const data = await res.json();
         const select = document.getElementById('act_dept_id');
@@ -395,11 +443,17 @@ function renderActivitiesTable(activities) {
 
         const formattedDate = act.target_date ? new Date(act.target_date).toISOString().split('T')[0] : 'N/A';
 
+        const attachmentCell = act.has_attachment
+            ? `<button onclick="downloadLguAttachment(${act.activity_id})" class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size: 0.72rem;" title="${escapeHtml(act.proposal_doc_name || 'Download')}">
+                 <i class="bi bi-download me-1"></i>File
+               </button>`
+            : `<span class="text-muted small">None</span>`;
+
         return `
             <tr>
                 <td>
                     <strong class="d-block text-dark mb-0">${act.title}</strong>
-                    <small class="text-muted text-truncate d-block" style="max-width: 250px;">
+                    <small class="text-muted text-truncate d-block" style="max-width: 240px;">
                         ${act.dept_name ? `<strong>[${act.dept_name}]</strong> ` : ''}${act.description || 'No description provided.'}
                     </small>
                 </td>
@@ -410,7 +464,7 @@ function renderActivitiesTable(activities) {
                 </td>
                 <td><i class="bi bi-geo-alt text-danger me-1"></i>${act.location || 'Vinzons'}</td>
                 <td><i class="bi bi-calendar-event me-1 text-primary"></i>${formattedDate}</td>
-                <td><strong>${act.estimated_hours || 0} hrs</strong></td>
+                <td>${attachmentCell}</td>
                 <td>${badgeHtml}</td>
                 <td class="text-end">
                     <button onclick="showDetailsModal(${act.activity_id})" class="btn btn-sm btn-outline-secondary py-1 px-3 fw-semibold" style="font-size: 0.75rem;">
@@ -420,6 +474,29 @@ function renderActivitiesTable(activities) {
             </tr>
         `;
     }).join('');
+}
+
+async function downloadLguAttachment(activityId) {
+    const token = localStorage.getItem('token');
+    try {
+        const res = await fetch(`/api/lgu/activities/${activityId}/attachment`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            alert(data.error || 'Unable to download attachment.');
+            return;
+        }
+        const link = document.createElement('a');
+        link.href = data.proposal_doc;
+        link.download = data.proposal_doc_name;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    } catch (err) {
+        console.error('Download error:', err);
+        alert('Error downloading attachment.');
+    }
 }
 
 function showDetailsModal(actId) {
@@ -434,6 +511,22 @@ function showDetailsModal(actId) {
     document.getElementById('modalLocation').textContent = act.location || 'Vinzons';
     document.getElementById('modalHours').textContent = `${act.estimated_hours || 0} Hours`;
     document.getElementById('modalCapacity').textContent = `${act.max_volunteers || 0} Slots`;
+
+    const attSection = document.getElementById('modalAttachmentSection');
+    if (act.has_attachment) {
+        attSection.innerHTML = `
+            <div class="d-flex align-items-center justify-content-between bg-primary bg-opacity-10 border border-primary border-opacity-25 rounded-3 p-2 px-3">
+                <div class="small fw-semibold text-primary text-truncate me-2">
+                    <i class="bi bi-file-earmark-text-fill me-1"></i>${escapeHtml(act.proposal_doc_name || 'Proposal_Attachment')}
+                </div>
+                <button onclick="downloadLguAttachment(${act.activity_id})" class="btn btn-sm btn-primary fw-semibold">
+                    <i class="bi bi-download me-1"></i>Download
+                </button>
+            </div>
+        `;
+    } else {
+        attSection.innerHTML = '';
+    }
 
     const descElem = document.getElementById('modalDescription');
     if (act.status === 'Rejected' && act.rejection_reason) {
@@ -459,10 +552,16 @@ function showDetailsModal(actId) {
 document.getElementById('proposeActivityForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const token = localStorage.getItem('token');
+    const submitBtn = document.getElementById('submitProposalBtn');
 
     const rawDate = document.getElementById('act_target_date').value;
     if (!rawDate || isNaN(Date.parse(rawDate))) {
         showAlert('danger', 'Please enter a valid target date (YYYY-MM-DD).');
+        return;
+    }
+
+    if (!proposalFileBase64) {
+        showAlert('danger', 'Please attach the supporting activity proposal document.');
         return;
     }
 
@@ -475,10 +574,15 @@ document.getElementById('proposeActivityForm').addEventListener('submit', async 
         max_volunteers: parseInt(document.getElementById('act_max_volunteers').value, 10) || 20,
         estimated_hours: parseInt(document.getElementById('act_estimated_hours').value, 10) || 8,
         description: document.getElementById('act_description').value.trim(),
-        lifespan_days: parseInt(document.getElementById('act_lifespan_days').value, 10) || 14
+        lifespan_days: parseInt(document.getElementById('act_lifespan_days').value, 10) || 14,
+        proposal_doc: proposalFileBase64,
+        proposal_doc_name: proposalFileName
     };
 
     try {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span> Submitting...`;
+
         const res = await fetch('/api/lgu/activities', {
             method: 'POST',
             headers: { 
@@ -494,7 +598,7 @@ document.getElementById('proposeActivityForm').addEventListener('submit', async 
                 const errData = await res.json();
                 showAlert('danger', errData.error || errData.message || 'Failed to submit proposal.');
             } else {
-                showAlert('danger', `Endpoint Error (${res.status}): Ensure app.use('/api/lgu', lguRoutes) is mounted in server.js.`);
+                showAlert('danger', `Server Error (${res.status}): File may be too large or server is restarting.`);
             }
             return;
         }
@@ -506,11 +610,17 @@ document.getElementById('proposeActivityForm').addEventListener('submit', async 
 
         showAlert('success', data.message || 'Activity proposal submitted successfully!');
         document.getElementById('proposeActivityForm').reset();
+        proposalFileBase64 = null;
+        proposalFileName = null;
+        document.getElementById('attachmentBadgeBox').classList.add('d-none');
         loadLguActivities(currentStatusFilter);
 
     } catch (err) {
         console.error('Proposal submit error:', err);
         showAlert('danger', 'Failed to connect to the server.');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = `<i class="bi bi-send-fill me-1"></i> Submit Proposal`;
     }
 });
 
@@ -559,6 +669,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (addModalEl) {
         addModalEl.addEventListener('hidden.bs.modal', () => {
             document.getElementById('proposeActivityForm').reset();
+            proposalFileBase64 = null;
+            proposalFileName = null;
+            document.getElementById('attachmentBadgeBox').classList.add('d-none');
         });
     }
 });

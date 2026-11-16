@@ -165,7 +165,9 @@ router.get('/activities', async (req, res) => {
 
     const query = `
       SELECT 
-        a.*, 
+        a.activity_id, a.title, a.description, a.target_course, a.location,
+        a.target_date, a.estimated_hours, a.max_volunteers, a.status, a.rejection_reason,
+        a.proposal_doc_name, (a.proposal_doc IS NOT NULL) AS has_attachment,
         ag.agency_name, 
         d.dept_name 
       FROM public.programs_activities a
@@ -178,6 +180,41 @@ router.get('/activities', async (req, res) => {
   } catch (err) {
     console.error('Error fetching activities:', err);
     res.status(500).json({ error: 'Server error while fetching activities.' });
+  }
+});
+
+// GET: Download / Inspect Proposal Attachment Before Approval
+router.get('/activities/:activityId/attachment', async (req, res) => {
+  const activityId = parseInt(req.params.activityId, 10);
+
+  if (!activityId) {
+    return res.status(400).json({ error: 'Invalid activity ID.' });
+  }
+
+  try {
+    const result = await pool.query(
+      'SELECT title, proposal_doc, proposal_doc_name FROM programs_activities WHERE activity_id = $1',
+      [activityId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Extension activity not found.' });
+    }
+
+    const row = result.rows[0];
+    if (!row.proposal_doc) {
+      return res.status(404).json({ error: 'No downloadable attachment was provided for this activity.' });
+    }
+
+    res.json({
+      success: true,
+      title: row.title,
+      proposal_doc: row.proposal_doc,
+      proposal_doc_name: row.proposal_doc_name || `Activity_${activityId}_Proposal`
+    });
+  } catch (err) {
+    console.error('Fetch Activity Attachment Error:', err);
+    res.status(500).json({ error: 'Failed to retrieve activity attachment.' });
   }
 });
 
@@ -320,6 +357,7 @@ router.get('/activities/list', async (req, res) => {
     let query = `
       SELECT p.activity_id, p.title, p.description, p.target_course, p.location, 
              p.target_date, p.estimated_hours, p.max_volunteers, p.status, p.rejection_reason, p.expires_at,
+             p.proposal_doc_name, (p.proposal_doc IS NOT NULL) AS has_attachment,
              d.dept_name 
       FROM programs_activities p
       LEFT JOIN lgu_departments d ON p.dept_id = d.dept_id

@@ -75,7 +75,7 @@
             <!-- Header Title Bar -->
             <div class="mb-4">
                 <h3 class="fw-bold mb-1 text-dark">Extension Activities Management</h3>
-                <p class="text-muted small mb-0">Review, evaluate, and approve community extension proposals submitted by LGU Vinzons.</p>
+                <p class="text-muted small mb-0">Review, download proposal attachments, and evaluate community extension activities submitted by LGU Vinzons.</p>
             </div>
 
             <!-- Feedback Alert Container -->
@@ -117,7 +117,7 @@
                                 <th>REQUIRED COURSE</th>
                                 <th>LOCATION</th>
                                 <th>TARGET DATE</th>
-                                <th>EST. HOURS</th>
+                                <th>PROPOSAL FILE</th>
                                 <th>STATUS</th>
                                 <th class="text-end">ACTIONS</th>
                             </tr>
@@ -164,6 +164,10 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Downloadable Attachment Review Box -->
+                <div id="modalAttachmentBox" class="mb-3"></div>
+
                 <h6 class="fw-bold text-dark mb-1">Description & Objectives:</h6>
                 <div id="modalDescription" class="text-muted small mb-0" style="line-height: 1.6;">--</div>
             </div>
@@ -267,9 +271,15 @@ function renderActivitiesTable(activities) {
             badgeHtml = `<span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 px-2 py-1" title="${escapeHtml(act.rejection_reason || 'No reason provided')}">Rejected <i class="bi bi-info-circle-fill ms-1"></i></span>`;
         }
 
+        const attachmentBtn = act.has_attachment
+            ? `<button onclick="downloadActivityAttachment(${act.activity_id})" class="btn btn-sm btn-outline-primary py-1 px-2 fw-semibold" style="font-size: 0.72rem;" title="${escapeHtml(act.proposal_doc_name || 'Download Proposal')}">
+                 <i class="bi bi-download me-1"></i>Download
+               </button>`
+            : `<span class="text-muted small">No File</span>`;
+
         let actionBtns = `
             <button onclick="showDetailsModal(${act.activity_id})" class="btn btn-sm btn-outline-secondary py-1 px-2 fw-semibold" style="font-size: 0.75rem;">
-                <i class="bi bi-eye me-1"></i>View
+                <i class="bi bi-eye me-1"></i>Review
             </button>
         `;
 
@@ -286,7 +296,7 @@ function renderActivitiesTable(activities) {
             <tr>
                 <td>
                     <strong class="d-block text-dark mb-0">${act.title}</strong>
-                    <small class="text-muted text-truncate d-block" style="max-width: 250px;">${act.description || 'No description provided.'}</small>
+                    <small class="text-muted text-truncate d-block" style="max-width: 240px;">${act.description || 'No description provided.'}</small>
                 </td>
                 <td>
                     <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-2 py-1">
@@ -295,7 +305,7 @@ function renderActivitiesTable(activities) {
                 </td>
                 <td><i class="bi bi-geo-alt text-danger me-1"></i>${act.location || 'Vinzons'}</td>
                 <td><i class="bi bi-calendar-event me-1 text-primary"></i>${formattedDate}</td>
-                <td><strong>${act.estimated_hours || 0} hrs</strong></td>
+                <td>${attachmentBtn}</td>
                 <td>${badgeHtml}</td>
                 <td class="text-end">
                     <div class="d-inline-flex gap-1">${actionBtns}</div>
@@ -303,6 +313,31 @@ function renderActivitiesTable(activities) {
             </tr>
         `;
     }).join('');
+}
+
+async function downloadActivityAttachment(activityId) {
+    const token = localStorage.getItem('token');
+    try {
+        const res = await fetch(`/api/admin/activities/${activityId}/attachment`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+            alert(data.error || 'No downloadable attachment found.');
+            return;
+        }
+
+        const link = document.createElement('a');
+        link.href = data.proposal_doc;
+        link.download = data.proposal_doc_name;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    } catch (err) {
+        console.error('Download attachment error:', err);
+        alert('Error downloading activity proposal attachment.');
+    }
 }
 
 function showDetailsModal(actId) {
@@ -317,6 +352,31 @@ function showDetailsModal(actId) {
     document.getElementById('modalLocation').textContent = act.location || 'Vinzons';
     document.getElementById('modalHours').textContent = `${act.estimated_hours || 0} Hours`;
     document.getElementById('modalCapacity').textContent = `${act.max_volunteers || 0} Slots`;
+
+    // Render Downloadable Attachment Box inside Modal
+    const attBox = document.getElementById('modalAttachmentBox');
+    if (act.has_attachment) {
+        attBox.innerHTML = `
+            <div class="d-flex align-items-center justify-content-between bg-primary bg-opacity-10 border border-primary border-opacity-25 rounded-3 p-3">
+                <div class="d-flex align-items-center gap-2 text-truncate me-2">
+                    <i class="bi bi-file-earmark-check-fill fs-4 text-primary"></i>
+                    <div>
+                        <small class="text-muted text-uppercase fw-bold d-block" style="font-size: 0.65rem;">SUPPORTING PROPOSAL DOCUMENT</small>
+                        <strong class="text-dark small">${escapeHtml(act.proposal_doc_name || 'Activity_Proposal_Attachment')}</strong>
+                    </div>
+                </div>
+                <button onclick="downloadActivityAttachment(${act.activity_id})" class="btn btn-sm btn-primary fw-bold px-3">
+                    <i class="bi bi-download me-1"></i>Download Attachment
+                </button>
+            </div>
+        `;
+    } else {
+        attBox.innerHTML = `
+            <div class="alert alert-warning py-2 px-3 small mb-0">
+                <i class="bi bi-exclamation-circle me-1"></i>No supporting document was attached to this proposal.
+            </div>
+        `;
+    }
 
     const descElem = document.getElementById('modalDescription');
     if (act.status === 'Rejected' && act.rejection_reason) {
