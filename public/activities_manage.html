@@ -75,7 +75,7 @@
             <!-- Header Title Bar -->
             <div class="mb-4">
                 <h3 class="fw-bold mb-1 text-dark">Extension Activities Management</h3>
-                <p class="text-muted small mb-0">Review, download proposal attachments, and evaluate community extension activities submitted by LGU Vinzons.</p>
+                <p class="text-muted small mb-0">Review, download proposal attachments, reschedule event dates, and evaluate community extension activities.</p>
             </div>
 
             <!-- Feedback Alert Container -->
@@ -144,6 +144,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body py-3">
+                <div id="modalRescheduleBanner"></div>
                 <div class="bg-light p-3 rounded mb-3">
                     <div class="row g-3 text-center">
                         <div class="col-md-3 col-6">
@@ -174,6 +175,46 @@
             <div class="modal-footer border-top-0 pt-0" id="modalFooterActions">
                 <button type="button" class="btn btn-sm btn-secondary fw-semibold" data-bs-dismiss="modal">Close</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Reschedule Activity Modal -->
+<div class="modal fade" id="rescheduleModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header border-bottom-0 pb-0">
+                <h5 class="modal-title fw-bold text-dark">
+                    <i class="bi bi-calendar2-week-fill text-warning me-2"></i>Reschedule Extension Activity
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="rescheduleForm">
+                <div class="modal-body py-3">
+                    <input type="hidden" id="reschedActivityId">
+                    <div class="bg-light p-3 rounded-3 mb-3">
+                        <small class="text-muted text-uppercase fw-bold d-block" style="font-size: 0.65rem;">ACTIVITY</small>
+                        <strong id="reschedActivityTitle" class="text-dark d-block mb-1">--</strong>
+                        <small class="text-muted">Current Scheduled Date: <strong id="reschedCurrentDate" class="text-primary">--</strong></small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="reschedNewDate" class="form-label small fw-bold text-muted text-uppercase mb-1">NEW TARGET DATE *</label>
+                        <input type="date" id="reschedNewDate" class="form-control" required>
+                    </div>
+                    <div class="mb-2">
+                        <label for="reschedReasonInput" class="form-label small fw-bold text-muted text-uppercase mb-1">
+                            REASON / ADVISORY NOTE <span class="text-muted fw-normal">(OPTIONAL)</span>
+                        </label>
+                        <textarea id="reschedReasonInput" class="form-control" rows="3" placeholder="e.g., Adjusted due to academic calendar exam schedule..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer border-top-0 pt-0">
+                    <button type="button" class="btn btn-sm btn-outline-secondary px-3" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" id="btnConfirmReschedule" class="btn btn-sm btn-warning text-dark fw-bold px-3">
+                        <i class="bi bi-calendar-check-fill me-1"></i> Save New Schedule
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -277,7 +318,15 @@ function renderActivitiesTable(activities) {
                </button>`
             : `<span class="text-muted small">No File</span>`;
 
+        const canReschedule = ['Approved', 'Pending'].includes(act.status);
+        const rescheduleBtn = canReschedule
+            ? `<button onclick="openRescheduleModal(${act.activity_id})" class="btn btn-sm btn-outline-warning text-dark py-1 px-2 fw-semibold" style="font-size: 0.75rem;" title="Reschedule Date">
+                 <i class="bi bi-calendar2-week me-1"></i>Reschedule
+               </button>`
+            : '';
+
         let actionBtns = `
+            ${rescheduleBtn}
             <button onclick="showDetailsModal(${act.activity_id})" class="btn btn-sm btn-outline-secondary py-1 px-2 fw-semibold" style="font-size: 0.75rem;">
                 <i class="bi bi-eye me-1"></i>Review
             </button>
@@ -285,12 +334,21 @@ function renderActivitiesTable(activities) {
 
         if (act.status === 'Pending') {
             actionBtns += `
-                <button onclick="evaluateProposalDirect(${act.activity_id}, 'approve')" class="btn btn-sm btn-success py-1 px-2 fw-bold ms-1" style="font-size: 0.75rem;"><i class="bi bi-check-lg me-1"></i>Approve</button>
-                <button onclick="openRejectModal(${act.activity_id}, '${escapeHtml(act.title)}')" class="btn btn-sm btn-outline-danger py-1 px-2 fw-bold ms-1" style="font-size: 0.75rem;">Reject</button>
+                <button onclick="evaluateProposalDirect(${act.activity_id}, 'approve')" class="btn btn-sm btn-success py-1 px-2 fw-bold" style="font-size: 0.75rem;"><i class="bi bi-check-lg me-1"></i>Approve</button>
+                <button onclick="openRejectModal(${act.activity_id}, '${escapeHtml(act.title)}')" class="btn btn-sm btn-outline-danger py-1 px-2 fw-bold" style="font-size: 0.75rem;">Reject</button>
             `;
         }
 
         const formattedDate = act.target_date ? new Date(act.target_date).toISOString().split('T')[0] : 'N/A';
+        const prevDate = act.previous_target_date ? new Date(act.previous_target_date).toISOString().split('T')[0] : null;
+
+        const dateCellHtml = prevDate
+            ? `<div>
+                 <span class="fw-semibold text-dark"><i class="bi bi-calendar-event me-1 text-primary"></i>${formattedDate}</span>
+                 <span class="badge bg-warning bg-opacity-25 text-dark border border-warning ms-1" style="font-size: 0.65rem;" title="${escapeHtml(act.reschedule_reason || 'Date updated')}">Rescheduled</span>
+                 <small class="d-block text-muted text-decoration-line-through" style="font-size: 0.72rem;">Was: ${prevDate}</small>
+               </div>`
+            : `<i class="bi bi-calendar-event me-1 text-primary"></i>${formattedDate}`;
 
         return `
             <tr>
@@ -304,7 +362,7 @@ function renderActivitiesTable(activities) {
                     </span>
                 </td>
                 <td><i class="bi bi-geo-alt text-danger me-1"></i>${act.location || 'Vinzons'}</td>
-                <td><i class="bi bi-calendar-event me-1 text-primary"></i>${formattedDate}</td>
+                <td>${dateCellHtml}</td>
                 <td>${attachmentBtn}</td>
                 <td>${badgeHtml}</td>
                 <td class="text-end">
@@ -314,6 +372,65 @@ function renderActivitiesTable(activities) {
         `;
     }).join('');
 }
+
+function openRescheduleModal(actId) {
+    const act = loadedActivities.find(a => a.activity_id === actId);
+    if (!act) return;
+
+    const currentDate = act.target_date ? new Date(act.target_date).toISOString().split('T')[0] : '';
+    document.getElementById('reschedActivityId').value = act.activity_id;
+    document.getElementById('reschedActivityTitle').textContent = act.title;
+    document.getElementById('reschedCurrentDate').textContent = currentDate || 'N/A';
+    document.getElementById('reschedNewDate').value = currentDate;
+    document.getElementById('reschedReasonInput').value = act.reschedule_reason || '';
+
+    const modal = new bootstrap.Modal(document.getElementById('rescheduleModal'));
+    modal.show();
+}
+
+document.getElementById('rescheduleForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const token = localStorage.getItem('token');
+    const btn = document.getElementById('btnConfirmReschedule');
+
+    const activityId = document.getElementById('reschedActivityId').value;
+    const newDate = document.getElementById('reschedNewDate').value;
+    const reason = document.getElementById('reschedReasonInput').value.trim();
+
+    try {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span> Saving...`;
+
+        const res = await fetch(`/api/admin/activities/${activityId}/reschedule`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                new_target_date: newDate,
+                reschedule_reason: reason
+            })
+        });
+
+        const data = await res.json();
+        const modal = bootstrap.Modal.getInstance(document.getElementById('rescheduleModal'));
+        if (modal) modal.hide();
+
+        if (res.ok && data.success) {
+            showAlert('success', data.message);
+            loadActivities(currentStatusFilter);
+        } else {
+            showAlert('danger', data.error || 'Failed to reschedule activity.');
+        }
+    } catch (err) {
+        console.error('Reschedule error:', err);
+        showAlert('danger', 'Server connection error while rescheduling.');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="bi bi-calendar-check-fill me-1"></i> Save New Schedule`;
+    }
+});
 
 async function downloadActivityAttachment(activityId) {
     const token = localStorage.getItem('token');
@@ -345,6 +462,7 @@ function showDetailsModal(actId) {
     if (!act) return;
 
     const formattedDate = act.target_date ? new Date(act.target_date).toISOString().split('T')[0] : 'N/A';
+    const prevDate = act.previous_target_date ? new Date(act.previous_target_date).toISOString().split('T')[0] : null;
 
     document.getElementById('modalTitle').textContent = act.title;
     document.getElementById('modalCourseBadge').textContent = `Target: ${act.target_course || 'All Courses'}`;
@@ -353,7 +471,19 @@ function showDetailsModal(actId) {
     document.getElementById('modalHours').textContent = `${act.estimated_hours || 0} Hours`;
     document.getElementById('modalCapacity').textContent = `${act.max_volunteers || 0} Slots`;
 
-    // Render Downloadable Attachment Box inside Modal
+    const reschedBanner = document.getElementById('modalRescheduleBanner');
+    if (prevDate) {
+        reschedBanner.innerHTML = `
+            <div class="alert alert-warning py-2 px-3 mb-3 small">
+                <strong><i class="bi bi-calendar2-week-fill me-1"></i>Rescheduled Activity:</strong>
+                Moved from <span class="text-decoration-line-through">${prevDate}</span> to <strong>${formattedDate}</strong>.
+                ${act.reschedule_reason ? `<br><strong>Reason:</strong> ${escapeHtml(act.reschedule_reason)}` : ''}
+            </div>
+        `;
+    } else {
+        reschedBanner.innerHTML = '';
+    }
+
     const attBox = document.getElementById('modalAttachmentBox');
     if (act.has_attachment) {
         attBox.innerHTML = `

@@ -145,6 +145,7 @@ function renderActivities() {
 
     container.innerHTML = list.map(act => {
         const formattedDate = act.target_date ? new Date(act.target_date).toISOString().split('T')[0] : 'N/A';
+        const prevDate = act.previous_target_date ? new Date(act.previous_target_date).toISOString().split('T')[0] : null;
         const isPast = Boolean(act.is_past_date);
         const isFull = act.max_volunteers && act.current_volunteers >= act.max_volunteers;
 
@@ -181,6 +182,13 @@ function renderActivities() {
             `;
         }
 
+        const rescheduleBanner = prevDate
+            ? `<div class="alert alert-warning py-1 px-2 mb-2 rounded-3 border-warning" style="font-size: 0.72rem;">
+                 <i class="bi bi-calendar2-week-fill me-1"></i><strong>Rescheduled:</strong> Moved from <span class="text-decoration-line-through">${prevDate}</span> to <strong>${formattedDate}</strong>.
+                 ${act.reschedule_reason ? `<div class="mt-1 text-dark"><strong>Note:</strong> ${act.reschedule_reason}</div>` : ''}
+               </div>`
+            : '';
+
         return `
             <div class="student-action-card mb-3 ${isPast && !act.is_joined ? 'opacity-75' : ''}">
                 <div class="d-flex justify-content-between align-items-start mb-2">
@@ -188,11 +196,13 @@ function renderActivities() {
                         <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 mb-1" style="font-size: 0.65rem;">
                             Target: ${act.target_course || 'All Courses'}
                         </span>
+                        ${prevDate ? `<span class="badge bg-warning text-dark ms-1" style="font-size: 0.65rem;">Rescheduled</span>` : ''}
                         ${isPast ? `<span class="badge bg-secondary ms-1" style="font-size: 0.65rem;">Past Date</span>` : ''}
                         <h6 class="fw-bold text-dark mb-0">${act.title}</h6>
                     </div>
                 </div>
                 
+                ${rescheduleBanner}
                 <p class="text-muted small mb-2" style="font-size: 0.8rem;">${act.description || 'No description provided.'}</p>
                 
                 <div class="bg-light p-2 rounded mb-2 d-flex justify-content-between text-muted" style="font-size: 0.72rem;">

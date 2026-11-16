@@ -31,10 +31,11 @@ router.get('/dashboard', async (req, res) => {
       "SELECT COUNT(*) AS total FROM activity_participants WHERE status IN ('Joined', 'Completed')"
     );
 
-    // Fetch top 5 recent approved activities for quick dashboard viewing
     const approvedActivitiesQuery = `
-      SELECT p.activity_id, p.title, p.target_course, p.location, p.target_date, p.estimated_hours,
-             p.max_volunteers, p.status, p.proposal_doc_name, (p.proposal_doc IS NOT NULL) AS has_attachment,
+      SELECT p.activity_id, p.title, p.target_course, p.location, p.target_date,
+             p.previous_target_date, p.reschedule_reason, p.rescheduled_at,
+             p.estimated_hours, p.max_volunteers, p.status, p.proposal_doc_name,
+             (p.proposal_doc IS NOT NULL) AS has_attachment,
              d.dept_name,
              (SELECT COUNT(*) FROM activity_participants ap WHERE ap.activity_id = p.activity_id) AS total_joined
       FROM programs_activities p
@@ -85,7 +86,8 @@ router.get('/activities', async (req, res) => {
   try {
     let query = `
       SELECT p.activity_id, p.title, p.description, p.target_course, p.location, 
-             p.target_date, p.estimated_hours, p.max_volunteers, p.status, p.rejection_reason,
+             p.target_date, p.previous_target_date, p.reschedule_reason, p.rescheduled_at,
+             p.estimated_hours, p.max_volunteers, p.status, p.rejection_reason,
              p.proposal_doc_name, (p.proposal_doc IS NOT NULL) AS has_attachment,
              d.dept_name,
              (SELECT COUNT(*) FROM activity_participants ap WHERE ap.activity_id = p.activity_id) AS total_joined
@@ -140,6 +142,71 @@ router.get('/activities/:activityId/attachment', async (req, res) => {
   }
 });
 
+// PUT: Reschedule Extension Activity (With Optional Reason / Notice)
+router.put('/activities/:activityId/reschedule', async (req, res) => {
+  const activityId = parseInt(req.params.activityId, 10);
+  const { new_target_date, reschedule_reason } = req.body;
+  const userId = req.user?.user_id || req.session?.user_id || null;
+
+  if (!activityId || !new_target_date) {
+    return res.status(400).json({ error: 'Activity ID and new target date are required.' });
+  }
+
+  try {
+    const existingRes = await pool.query(
+      'SELECT activity_id, title, target_date, status FROM programs_activities WHERE activity_id = $1',
+      [activityId]
+    );
+
+    if (existingRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Activity not found.' });
+    }
+
+    const act = existingRes.rows[0];
+    if (!['Approved', 'Pending'].includes(act.status)) {
+      return res.status(400).json({ error: `Cannot reschedule an activity with status '${act.status}'.` });
+    }
+
+    const oldDateStr = act.target_date ? new Date(act.target_date).toISOString().split('T')[0] : 'N/A';
+    if (oldDateStr === new_target_date) {
+      return res.status(400).json({ error: 'New target date must be different from the current scheduled date.' });
+    }
+
+    const cleanReason = reschedule_reason && reschedule_reason.trim() !== ''
+      ? reschedule_reason.trim()
+      : null;
+
+    await pool.query(
+      `UPDATE programs_activities
+       SET previous_target_date = target_date,
+           target_date = $1,
+           reschedule_reason = $2,
+           rescheduled_at = CURRENT_TIMESTAMP
+       WHERE activity_id = $3`,
+      [new_target_date, cleanReason, activityId]
+    );
+
+    const coordinatorName = req.user?.full_name || 'LGU Coordinator';
+    let logText = `LGU (${coordinatorName}) rescheduled '${act.title}' from ${oldDateStr} to ${new_target_date}`;
+    if (cleanReason) {
+      logText += `. Reason: ${cleanReason}`;
+    }
+
+    await pool.query(
+      'INSERT INTO activity_logs (activity_id, user_id, action_taken) VALUES ($1, $2, $3)',
+      [activityId, userId, logText]
+    );
+
+    res.json({
+      success: true,
+      message: `Activity '${act.title}' rescheduled from ${oldDateStr} to ${new_target_date}.`
+    });
+  } catch (err) {
+    console.error('LGU Reschedule Activity Error:', err);
+    res.status(500).json({ error: 'Failed to reschedule activity.' });
+  }
+});
+
 // Helper function: Submit proposed community extension activity with validity lifespan & attachment
 const handleProposeActivity = async (req, res) => {
   const title             = req.body.title ? req.body.title.trim() : '';
@@ -155,7 +222,6 @@ const handleProposeActivity = async (req, res) => {
   const proposal_doc      = req.body.proposal_doc || null;
   const proposal_doc_name = req.body.proposal_doc_name ? req.body.proposal_doc_name.trim() : null;
 
-  // Automatic Status: Always set to 'Pending' for OLLCF Extension Office review
   const status = 'Pending';
 
   if (!title || !target_date || !target_course) {
@@ -163,7 +229,6 @@ const handleProposeActivity = async (req, res) => {
   }
 
   try {
-    // Calculate validity expiration date
     const expires_at = new Date();
     expires_at.setDate(expires_at.getDate() + lifespan_days);
 

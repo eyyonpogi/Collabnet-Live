@@ -9,19 +9,16 @@ router.use(requireAuth, requireRole('Admin'));
 // --- 1. ADMIN DASHBOARD METRICS & SUMMARY ---
 router.get('/dashboard', async (req, res) => {
   try {
-    // Auto-Expire MOAs: Flag past partnership agreements as Expired
     await pool.query(
       "UPDATE partnerships SET status = 'Expired' WHERE end_date < CURRENT_DATE AND status != 'Expired'"
     );
 
-    // Auto-Expire Pending Activities: Mark overdue pending proposals as Expired
     await pool.query(`
       UPDATE public.programs_activities
       SET status = 'Expired'
       WHERE status = 'Pending' AND expires_at < CURRENT_TIMESTAMP
     `);
 
-    // Operational KPI Queries
     const pendingStudentsRes = await pool.query(
       "SELECT COUNT(*) as count FROM users WHERE role = 'Student' AND verification_status = 'Pending'"
     );
@@ -35,7 +32,6 @@ router.get('/dashboard', async (req, res) => {
       "SELECT COUNT(*) as count FROM programs_activities WHERE status = 'Approved'"
     );
 
-    // Queue Feeds: Pending Proposals & Pending Student Reviews (Indexed newest first)
     const proposalsFeed = await pool.query(
       "SELECT activity_id, title, target_course, location, target_date FROM programs_activities WHERE status = 'Pending' ORDER BY activity_id DESC LIMIT 5"
     );
@@ -140,7 +136,6 @@ router.post('/students/verify', async (req, res) => {
       [newStatus, isVerified, user_id]
     );
 
-    // Log decision in audit trail
     const logAction = `${action === 'approve' ? 'Approved' : 'Rejected'} Student Account ID #${user_id}`;
     await pool.query(
       'INSERT INTO activity_logs (user_id, action_taken) VALUES ($1, $2)',
@@ -166,7 +161,8 @@ router.get('/activities', async (req, res) => {
     const query = `
       SELECT 
         a.activity_id, a.title, a.description, a.target_course, a.location,
-        a.target_date, a.estimated_hours, a.max_volunteers, a.status, a.rejection_reason,
+        a.target_date, a.previous_target_date, a.reschedule_reason, a.rescheduled_at,
+        a.estimated_hours, a.max_volunteers, a.status, a.rejection_reason,
         a.proposal_doc_name, (a.proposal_doc IS NOT NULL) AS has_attachment,
         ag.agency_name, 
         d.dept_name 
@@ -215,6 +211,68 @@ router.get('/activities/:activityId/attachment', async (req, res) => {
   } catch (err) {
     console.error('Fetch Activity Attachment Error:', err);
     res.status(500).json({ error: 'Failed to retrieve activity attachment.' });
+  }
+});
+
+// PUT: Reschedule Extension Activity (Admin / Extension Director)
+router.put('/activities/:activityId/reschedule', async (req, res) => {
+  const activityId = parseInt(req.params.activityId, 10);
+  const { new_target_date, reschedule_reason } = req.body;
+  const adminId = req.session?.user_id || req.user?.user_id;
+
+  if (!activityId || !new_target_date) {
+    return res.status(400).json({ error: 'Activity ID and new target date are required.' });
+  }
+
+  try {
+    const existingRes = await pool.query(
+      'SELECT activity_id, title, target_date, status FROM programs_activities WHERE activity_id = $1',
+      [activityId]
+    );
+
+    if (existingRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Extension activity not found.' });
+    }
+
+    const act = existingRes.rows[0];
+    const oldDateStr = act.target_date ? new Date(act.target_date).toISOString().split('T')[0] : 'N/A';
+
+    if (oldDateStr === new_target_date) {
+      return res.status(400).json({ error: 'New target date must be different from the current scheduled date.' });
+    }
+
+    const cleanReason = reschedule_reason && reschedule_reason.trim() !== ''
+      ? reschedule_reason.trim()
+      : null;
+
+    await pool.query(
+      `UPDATE programs_activities
+       SET previous_target_date = target_date,
+           target_date = $1,
+           reschedule_reason = $2,
+           rescheduled_at = CURRENT_TIMESTAMP
+       WHERE activity_id = $3`,
+      [new_target_date, cleanReason, activityId]
+    );
+
+    const reviewerName = req.session?.full_name || req.user?.full_name || 'Extension Director';
+    let logText = `Extension Director (${reviewerName}) rescheduled '${act.title}' from ${oldDateStr} to ${new_target_date}`;
+    if (cleanReason) {
+      logText += `. Reason: ${cleanReason}`;
+    }
+
+    await pool.query(
+      'INSERT INTO activity_logs (activity_id, user_id, action_taken) VALUES ($1, $2, $3)',
+      [activityId, adminId, logText]
+    );
+
+    res.json({
+      success: true,
+      message: `Activity '${act.title}' rescheduled from ${oldDateStr} to ${new_target_date}.`
+    });
+  } catch (err) {
+    console.error('Admin Reschedule Activity Error:', err);
+    res.status(500).json({ error: 'Failed to reschedule activity.' });
   }
 });
 
@@ -297,7 +355,6 @@ router.get('/attendance/audit/:activityId', async (req, res) => {
       const rendered = parseFloat(row.hours_rendered || 0);
       const target = parseFloat(row.target_hours || 0);
 
-      // System Automatic Certificate Eligibility Rule
       const isCompleted = row.target_reached === true || (rendered >= target && target > 0) || row.certificate_issued === true;
       const isEarlyOut = !isCompleted && Boolean(row.early_out_reason);
 
@@ -356,7 +413,8 @@ router.get('/activities/list', async (req, res) => {
 
     let query = `
       SELECT p.activity_id, p.title, p.description, p.target_course, p.location, 
-             p.target_date, p.estimated_hours, p.max_volunteers, p.status, p.rejection_reason, p.expires_at,
+             p.target_date, p.previous_target_date, p.reschedule_reason, p.rescheduled_at,
+             p.estimated_hours, p.max_volunteers, p.status, p.rejection_reason, p.expires_at,
              p.proposal_doc_name, (p.proposal_doc IS NOT NULL) AS has_attachment,
              d.dept_name 
       FROM programs_activities p

@@ -113,14 +113,12 @@
 async function loadDashboard() {
     const token = localStorage.getItem('token');
     
-    // Redirect immediately if no token exists
     if (!token) {
         window.location.href = '/index.html';
         return;
     }
 
     try {
-        // ATTACH AUTHORIZATION BEARER TOKEN HEADER
         const response = await fetch('/api/student/dashboard', {
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -138,19 +136,16 @@ async function loadDashboard() {
         
         if (!data.success) return;
 
-        // Set User Name if present
         if (data.user_name) {
             document.getElementById('userName').textContent = data.user_name;
         }
 
-        // Populate KPIs (Supports both flat and nested properties)
         const totalHoursVal = data.total_hours !== undefined ? data.total_hours : (data.stats?.totalHours || 0);
         const joinedCountVal = data.joined_count !== undefined ? data.joined_count : (data.stats?.joinedCount || 0);
 
         document.getElementById('totalHours').textContent = parseFloat(totalHoursVal).toFixed(2);
         document.getElementById('joinedCount').textContent = parseInt(joinedCountVal, 10);
 
-        // Render Activities List
         const container = document.getElementById('activitiesContainer');
         if (!data.activities || data.activities.length === 0) {
             container.innerHTML = `
@@ -168,6 +163,7 @@ async function loadDashboard() {
             const rendered = parseFloat(act.hours_rendered || 0);
             const target = parseFloat(act.estimated_hours || 0);
             const targetReached = act.target_reached === true || rendered >= target;
+            const prevDate = act.previous_target_date ? new Date(act.previous_target_date).toISOString().split('T')[0] : null;
 
             let badgeHtml = '<span class="badge bg-light text-secondary border">Open</span>';
             if (act.is_joined) {
@@ -204,7 +200,10 @@ async function loadDashboard() {
                 <div class="student-action-card mb-2">
                     <div class="d-flex justify-content-between align-items-start mb-1">
                         <h6 class="fw-bold text-dark mb-0 text-truncate" style="max-width: 170px;">${act.title}</h6>
-                        ${badgeHtml}
+                        <div class="d-flex align-items-center gap-1">
+                            ${prevDate ? `<span class="badge bg-warning text-dark" style="font-size: 0.62rem;">Rescheduled</span>` : ''}
+                            ${badgeHtml}
+                        </div>
                     </div>
                     <p class="text-muted small mb-2 text-truncate" style="font-size: 0.8rem;">${act.description || 'No activity description provided.'}</p>
                     <div class="d-flex justify-content-between align-items-center pt-2 border-top">
@@ -225,7 +224,6 @@ async function loadDashboard() {
     }
 }
 
-// Join Activity Function with Authorization Header
 async function joinActivity(activityId) {
     const token = localStorage.getItem('token');
     try {
@@ -269,7 +267,6 @@ function showAlert(type, msg) {
     `;
 }
 
-// Handle Logout
 document.getElementById('logoutBtn').addEventListener('click', () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');

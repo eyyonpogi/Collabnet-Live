@@ -195,12 +195,11 @@
                 const rendered = parseFloat(act.hours_rendered || 0);
                 const target = parseFloat(act.estimated_hours || 0);
                 
-                // Certification Eligibility: Rendered hours >= target OR explicitly flagged by admin/system
                 const targetReached = act.target_reached === true || (rendered >= target && target > 0) || act.is_eligible_for_cert === true;
                 const isCertIssued = act.certificate_issued === true || targetReached;
                 
-                // Format clean date string (YYYY-MM-DD)
                 const formattedDate = act.target_date ? new Date(act.target_date).toISOString().split('T')[0] : 'N/A';
+                const prevDate = act.previous_target_date ? new Date(act.previous_target_date).toISOString().split('T')[0] : null;
 
                 let statusBadge = '';
                 if (hasIn && hasOut) {
@@ -215,7 +214,6 @@
                     statusBadge = `<span class="badge bg-secondary rounded-pill" style="font-size: 0.65rem;">Joined</span>`;
                 }
 
-                // Dedicated Certificate Download Button Bar
                 let certDownloadSection = '';
                 if (hasIn && hasOut && isCertIssued) {
                     certDownloadSection = `
@@ -233,6 +231,13 @@
                     `;
                 }
 
+                const rescheduleNotice = prevDate
+                    ? `<div class="alert alert-warning py-1 px-2 mb-2 rounded-3 border-warning" style="font-size: 0.72rem;">
+                         <i class="bi bi-calendar2-week-fill me-1"></i><strong>Rescheduled:</strong> Moved from <span class="text-decoration-line-through">${prevDate}</span> to <strong>${formattedDate}</strong>.
+                         ${act.reschedule_reason ? `<div class="mt-1 text-dark"><strong>Note:</strong> ${act.reschedule_reason}</div>` : ''}
+                       </div>`
+                    : '';
+
                 return `
                     <div class="student-action-card mb-3">
                         <div class="d-flex justify-content-between align-items-start mb-1">
@@ -242,6 +247,8 @@
                         <p class="text-muted small mb-2" style="font-size: 0.78rem;">
                             <i class="bi bi-geo-alt me-1 text-primary"></i>${act.location || 'Vinzons, Camarines Norte'}
                         </p>
+
+                        ${rescheduleNotice}
 
                         ${act.early_out_reason ? `
                             <div class="alert alert-light border border-warning-subtle py-1 px-2 mb-2" style="font-size: 0.72rem;">

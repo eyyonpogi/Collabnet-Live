@@ -18,7 +18,7 @@ function generateRotatingPin(activityId, type, stepOffset = 0) {
     return num.toString().padStart(4, '0');
 }
 
-// Helper: Verify 30-second rotating PIN (allows current 30s window or immediate previous 30s window for clock/typing grace)
+// Helper: Verify 30-second rotating PIN (allows current 30s window or immediate previous 30s window)
 function verifyRotatingPin(activityId, type, submittedPin) {
     const cleanPin = (submittedPin || '').trim();
     if (!/^\d{4}$/.test(cleanPin)) return false;
@@ -44,7 +44,8 @@ router.get('/dashboard', verifyToken, async (req, res) => {
         const stats = statsRes.rows[0];
 
         const activitiesRes = await db.query(
-            `SELECT a.activity_id, a.title, a.target_date, a.description, a.status, a.estimated_hours,
+            `SELECT a.activity_id, a.title, a.target_date, a.previous_target_date,
+                    a.reschedule_reason, a.rescheduled_at, a.description, a.status, a.estimated_hours,
                     (p.participant_id IS NOT NULL) AS is_joined,
                     p.hours_rendered, p.target_reached,
                     COALESCE(p.time_in, p.time_in_at) AS formatted_time_in,
@@ -148,7 +149,6 @@ router.get('/activities', verifyToken, async (req, res) => {
     const user_id = req.user.user_id;
 
     try {
-        // Fetch student's actual registered course from database
         const studentRes = await db.query('SELECT course FROM users WHERE user_id = $1', [user_id]);
         const user_course = studentRes.rows[0]?.course ? studentRes.rows[0].course.trim() : '';
 
@@ -159,6 +159,9 @@ router.get('/activities', verifyToken, async (req, res) => {
                 a.description,
                 a.location,
                 a.target_date,
+                a.previous_target_date,
+                a.reschedule_reason,
+                a.rescheduled_at,
                 a.estimated_hours,
                 a.max_volunteers,
                 a.target_course,
@@ -191,7 +194,7 @@ router.get('/activities', verifyToken, async (req, res) => {
     }
 });
 
-// POST: Join or Leave an Extension Activity (Enforces Course Restriction, Backdate Block, and Capacity)
+// POST: Join or Leave an Extension Activity
 router.post('/activities/join', verifyToken, async (req, res) => {
     const { activity_id, action } = req.body;
     const user_id = req.user.user_id;
@@ -234,8 +237,6 @@ router.post('/activities/join', verifyToken, async (req, res) => {
             return res.json({ success: true, message: 'Successfully left the activity.' });
         }
 
-        // --- JOIN ACTIVITY LOGIC ---
-        // 1. Fetch Student Course
         const studentRes = await db.query(
             `SELECT course, is_verified FROM users WHERE user_id = $1`,
             [user_id]
@@ -245,7 +246,6 @@ router.post('/activities/join', verifyToken, async (req, res) => {
         }
         const studentCourse = (studentRes.rows[0].course || '').trim();
 
-        // 2. Fetch Activity Details & Check Past-Date Status in DB
         const targetActRes = await db.query(
             `SELECT activity_id, title, target_date, target_course, max_volunteers, status,
                     (DATE(target_date) < (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila')::date) AS is_past_date,
@@ -266,7 +266,6 @@ router.post('/activities/join', verifyToken, async (req, res) => {
             });
         }
 
-        // 3. Enforce Backdating Prevention (Cannot join past/completed dates)
         if (targetAct.is_past_date) {
             const pastStr = new Date(targetAct.target_date).toISOString().split('T')[0];
             return res.status(400).json({
@@ -275,7 +274,6 @@ router.post('/activities/join', verifyToken, async (req, res) => {
             });
         }
 
-        // 4. Enforce Restricted Course Policy
         const requiredCourse = (targetAct.target_course || 'All Courses').trim();
         if (
             requiredCourse.toLowerCase() !== 'all courses' &&
@@ -287,7 +285,6 @@ router.post('/activities/join', verifyToken, async (req, res) => {
             });
         }
 
-        // 5. Enforce Max Volunteer Capacity
         if (targetAct.max_volunteers && targetAct.current_volunteers >= targetAct.max_volunteers) {
             return res.status(400).json({
                 success: false,
@@ -295,7 +292,6 @@ router.post('/activities/join', verifyToken, async (req, res) => {
             });
         }
 
-        // 6. Enforce Same-Day Schedule Conflict Check
         const targetDate = new Date(targetAct.target_date).toISOString().split('T')[0];
         const conflictRes = await db.query(
             `SELECT a.title 
@@ -338,7 +334,10 @@ router.get('/attendance-list', verifyToken, async (req, res) => {
             SELECT 
                 a.activity_id, 
                 a.title, 
-                a.target_date, 
+                a.target_date,
+                a.previous_target_date,
+                a.reschedule_reason,
+                a.rescheduled_at,
                 a.location, 
                 a.estimated_hours,
                 p.participant_id,
@@ -361,7 +360,7 @@ router.get('/attendance-list', verifyToken, async (req, res) => {
     }
 });
 
-// POST: Time-In Venue PIN Submission (Validates 30-Second Rotating PIN)
+// POST: Time-In Venue PIN Submission
 router.post('/time-in', verifyToken, async (req, res) => {
     const { activity_id, pin } = req.body;
     const user_id = req.user.user_id;
@@ -413,7 +412,7 @@ router.post('/time-in', verifyToken, async (req, res) => {
     }
 });
 
-// POST: Time-Out Venue PIN Submission (Validates 30-Second Rotating PIN + Early Out Detection)
+// POST: Time-Out Venue PIN Submission
 router.post('/time-out', verifyToken, async (req, res) => {
     const { activity_id, pin, early_out_reason } = req.body;
     const user_id = req.user.user_id;
