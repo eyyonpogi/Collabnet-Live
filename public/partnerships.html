@@ -83,6 +83,9 @@
                 </button>
             </div>
 
+            <!-- Urgent MOA Expiration Notification Banner -->
+            <div id="urgentMoaAlertContainer"></div>
+
             <!-- Feedback Alert Container -->
             <div id="alertContainer"></div>
 
@@ -97,10 +100,11 @@
                                 <th>START DATE</th>
                                 <th>EXPIRATION DATE</th>
                                 <th>MOA STATUS</th>
+                                <th class="text-end">ACTIONS</th>
                             </tr>
                         </thead>
                         <tbody id="moaTableBody">
-                            <tr><td colspan="5" class="text-center text-muted py-3">Loading partnership agreements...</td></tr>
+                            <tr><td colspan="6" class="text-center text-muted py-3">Loading partnership agreements...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -181,8 +185,44 @@
     </div>
 </div>
 
+<!-- Modal: Renew MOA Agreement -->
+<div class="modal fade" id="renewMoaModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <form id="renewMoaForm">
+                <input type="hidden" id="renewPartnershipId">
+                <div class="modal-header border-bottom-0 pb-0">
+                    <h5 class="modal-title fw-bold text-dark">
+                        <i class="bi bi-arrow-repeat text-primary me-2"></i>Renew Partnership MOA
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body py-3">
+                    <div class="bg-light p-3 rounded-3 mb-3">
+                        <small class="text-muted text-uppercase fw-bold d-block" style="font-size: 0.65rem;">AGREEMENT</small>
+                        <strong id="renewMoaTitle" class="text-dark d-block mb-1">--</strong>
+                        <small class="text-muted">Current Expiration Date: <strong id="renewCurrentEnd" class="text-danger">--</strong></small>
+                    </div>
+                    <div class="mb-2">
+                        <label for="renewNewEndDate" class="form-label small fw-bold text-muted text-uppercase mb-1">NEW EXPIRATION DATE *</label>
+                        <input type="date" id="renewNewEndDate" class="form-control" required>
+                    </div>
+                </div>
+                <div class="modal-footer border-top-0 pt-0">
+                    <button type="button" class="btn btn-sm btn-outline-secondary px-3" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" id="btnConfirmRenew" class="btn btn-sm btn-primary fw-bold px-3">
+                        <i class="bi bi-check-circle-fill me-1"></i> Confirm Renewal
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+let loadedPartnerships = [];
+
 async function loadPartnerships() {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -205,30 +245,58 @@ async function loadPartnerships() {
         const data = await res.json();
         if (!data.success) return;
 
+        loadedPartnerships = data.partnerships || [];
+        renderUrgentMoaBanner(data.urgentAlerts || []);
+
         const body = document.getElementById('moaTableBody');
-        if (!data.partnerships || data.partnerships.length === 0) {
-            body.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">No partnership agreements registered yet.</td></tr>`;
+        if (loadedPartnerships.length === 0) {
+            body.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4">No partnership agreements registered yet.</td></tr>`;
             return;
         }
 
-        body.innerHTML = data.partnerships.map(m => {
+        body.innerHTML = loadedPartnerships.map(m => {
             const startDate = m.start_date ? new Date(m.start_date).toISOString().split('T')[0] : 'N/A';
             const endDate = m.end_date ? new Date(m.end_date).toISOString().split('T')[0] : 'N/A';
+            const days = parseInt(m.days_remaining, 10);
+
+            let rowClass = '';
+            let statusBadge = '';
+            let countdownNote = '';
+
+            if (m.urgency_level === 'expired') {
+                rowClass = 'table-danger bg-opacity-10';
+                statusBadge = `<span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 px-2 py-1"><i class="bi bi-exclamation-triangle-fill me-1"></i>Expired</span>`;
+                countdownNote = `<small class="d-block text-danger fw-semibold mt-1">Expired ${Math.abs(days)} day(s) ago</small>`;
+            } else if (m.urgency_level === 'critical') {
+                rowClass = 'table-warning';
+                statusBadge = `<span class="badge bg-danger text-white px-2 py-1"><i class="bi bi-alarm-fill me-1"></i>Urgent: ${days}d left</span>`;
+                countdownNote = `<small class="d-block text-danger fw-bold mt-1">Expires ${days === 0 ? 'today' : `in ${days} day(s)`}!</small>`;
+            } else if (m.urgency_level === 'warning') {
+                rowClass = 'table-warning bg-opacity-25';
+                statusBadge = `<span class="badge bg-warning text-dark border border-warning px-2 py-1"><i class="bi bi-exclamation-circle-fill me-1"></i>Expiring Soon (${days}d)</span>`;
+                countdownNote = `<small class="d-block text-warning-emphasis fw-semibold mt-1">${days} days remaining</small>`;
+            } else {
+                statusBadge = `<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1"><i class="bi bi-shield-check me-1"></i>Active</span>`;
+                countdownNote = `<small class="d-block text-muted mt-1">${days} days remaining</small>`;
+            }
             
             return `
-                <tr>
+                <tr class="${rowClass}">
                     <td class="fw-bold text-dark">${m.moa_title}</td>
                     <td>
                         <span class="d-block text-dark">${m.agency_name}</span>
                         <span class="badge bg-light text-dark border mt-1" style="font-weight: 500;">${m.agency_type}</span>
                     </td>
                     <td class="text-secondary">${startDate}</td>
-                    <td class="text-secondary">${endDate}</td>
                     <td>
-                        ${m.status === 'Active' 
-                            ? `<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1"><i class="bi bi-shield-check me-1"></i>Active</span>`
-                            : `<span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 px-2 py-1"><i class="bi bi-exclamation-triangle-fill me-1"></i>Expired</span>`
-                        }
+                        <span class="fw-semibold text-dark">${endDate}</span>
+                        ${countdownNote}
+                    </td>
+                    <td>${statusBadge}</td>
+                    <td class="text-end">
+                        <button onclick="openRenewModal(${m.partnership_id})" class="btn btn-sm ${m.urgency_level !== 'active' ? 'btn-warning text-dark fw-bold' : 'btn-outline-primary fw-semibold'} py-1 px-2" style="font-size: 0.75rem;">
+                            <i class="bi bi-arrow-repeat me-1"></i>Renew
+                        </button>
                     </td>
                 </tr>
             `;
@@ -237,6 +305,95 @@ async function loadPartnerships() {
         console.error('Error loading partnerships:', err);
     }
 }
+
+function renderUrgentMoaBanner(urgentAlerts) {
+    const container = document.getElementById('urgentMoaAlertContainer');
+    if (!urgentAlerts || urgentAlerts.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const itemsHtml = urgentAlerts.map(m => {
+        const endStr = m.end_date ? new Date(m.end_date).toISOString().split('T')[0] : 'N/A';
+        const days = parseInt(m.days_remaining, 10);
+        const statusText = days < 0
+            ? `<span class="badge bg-danger ms-1">Expired ${Math.abs(days)}d ago (${endStr})</span>`
+            : `<span class="badge bg-warning text-dark border border-dark ms-1">Expires in ${days}d (${endStr})</span>`;
+        return `<li class="mb-1"><strong>${m.moa_title}</strong> (${m.agency_name}) ${statusText}</li>`;
+    }).join('');
+
+    container.innerHTML = `
+        <div class="alert alert-danger border-danger shadow-sm rounded-3 mb-4" role="alert">
+            <div class="d-flex align-items-start gap-3">
+                <i class="bi bi-exclamation-octagon-fill fs-3 text-danger mt-1"></i>
+                <div class="flex-grow-1">
+                    <h6 class="fw-bold text-danger mb-1">Urgent MOA Expiration Notice (${urgentAlerts.length} Agreement${urgentAlerts.length > 1 ? 's' : ''})</h6>
+                    <p class="small text-dark mb-2">The following institutional MOAs have expired or will expire within the next 30 days. Please initiate renewal to avoid disruption to community extension programs:</p>
+                    <ul class="small mb-0 ps-3">${itemsHtml}</ul>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function openRenewModal(partnershipId) {
+    const moa = loadedPartnerships.find(m => m.partnership_id === partnershipId);
+    if (!moa) return;
+
+    const currentEnd = moa.end_date ? new Date(moa.end_date).toISOString().split('T')[0] : '';
+    document.getElementById('renewPartnershipId').value = moa.partnership_id;
+    document.getElementById('renewMoaTitle').textContent = `${moa.moa_title} (${moa.agency_name})`;
+    document.getElementById('renewCurrentEnd').textContent = currentEnd || 'N/A';
+
+    // Default suggested renewal: +1 year from today or current end date
+    const baseDate = currentEnd && currentEnd > new Date().toISOString().split('T')[0]
+        ? new Date(currentEnd)
+        : new Date();
+    baseDate.setFullYear(baseDate.getFullYear() + 1);
+    document.getElementById('renewNewEndDate').value = baseDate.toISOString().split('T')[0];
+
+    const modal = new bootstrap.Modal(document.getElementById('renewMoaModal'));
+    modal.show();
+}
+
+document.getElementById('renewMoaForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const token = localStorage.getItem('token');
+    const btn = document.getElementById('btnConfirmRenew');
+    const partnershipId = document.getElementById('renewPartnershipId').value;
+    const newEndDate = document.getElementById('renewNewEndDate').value;
+
+    try {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span> Renewing...`;
+
+        const res = await fetch(`/api/partnerships/${partnershipId}/renew`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ new_end_date: newEndDate })
+        });
+        const data = await res.json();
+
+        const modal = bootstrap.Modal.getInstance(document.getElementById('renewMoaModal'));
+        if (modal) modal.hide();
+
+        if (res.ok && data.success) {
+            showAlert('success', data.message);
+            loadPartnerships();
+        } else {
+            showAlert('danger', data.error || 'Failed to renew MOA.');
+        }
+    } catch (err) {
+        console.error('Renew MOA submit error:', err);
+        showAlert('danger', 'Failed to connect to the server.');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="bi bi-check-circle-fill me-1"></i> Confirm Renewal`;
+    }
+});
 
 async function loadAgenciesForDropdown() {
     const token = localStorage.getItem('token');

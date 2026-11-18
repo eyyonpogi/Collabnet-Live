@@ -90,6 +90,9 @@
                 </div>
             </div>
 
+            <!-- Urgent MOA Expiration Notification Banner -->
+            <div id="urgentMoaBanner"></div>
+
             <!-- Feedback Alert -->
             <div id="alertContainer"></div>
 
@@ -324,13 +327,11 @@ async function loadAdminDashboard() {
         const data = await res.json();
         if (!data.success) return;
 
-        // Display Admin Name
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
         const adminName = data.admin_name || storedUser.full_name || 'Extension Director';
         document.getElementById('sidebarUser').textContent = adminName;
         document.getElementById('welcomeHeader').textContent = `Welcome back, ${adminName}!`;
 
-        // Populate KPIs (Handles flat & nested objects)
         const pendingStudents = data.metrics?.pendingStudents ?? data.stats?.pending_students ?? 0;
         const pendingProposals = data.metrics?.pendingProposals ?? data.stats?.pending_proposals ?? 0;
         const approvedActivities = data.metrics?.approvedActivities ?? data.stats?.active_activities ?? 0;
@@ -344,7 +345,6 @@ async function loadAdminDashboard() {
         document.getElementById('badgeProposalsCount').textContent = `${pendingProposals} Pending`;
         document.getElementById('badgeStudentsCount').textContent = `${pendingStudents} Pending`;
 
-        // Render Proposals Table
         const proposalsBody = document.getElementById('proposalsTableBody');
         const pendingList = data.feeds?.pendingProposals || data.activities || [];
         if (!pendingList || pendingList.length === 0) {
@@ -368,7 +368,6 @@ async function loadAdminDashboard() {
             }).join('');
         }
 
-        // Render Student Verification Queue
         const studentsContainer = document.getElementById('studentsQueueContainer');
         const studentsList = data.feeds?.pendingStudents || [];
         if (!studentsList || studentsList.length === 0) {
@@ -392,8 +391,55 @@ async function loadAdminDashboard() {
             `).join('');
         }
 
+        // Load urgent MOA expiration alerts
+        loadUrgentMoaAlerts(token);
+
     } catch (err) {
         console.error('Failed to load admin dashboard:', err);
+    }
+}
+
+async function loadUrgentMoaAlerts(token) {
+    try {
+        const res = await fetch('/api/partnerships', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const alerts = data.urgentAlerts || [];
+        const banner = document.getElementById('urgentMoaBanner');
+
+        if (alerts.length === 0) {
+            banner.innerHTML = '';
+            return;
+        }
+
+        const listItems = alerts.map(m => {
+            const endDate = m.end_date ? new Date(m.end_date).toISOString().split('T')[0] : 'N/A';
+            const tag = m.urgency === 'expired'
+                ? `<span class="badge bg-danger ms-1">Expired (${endDate})</span>`
+                : `<span class="badge bg-warning text-dark ms-1">Expires in ${m.days_remaining} day${m.days_remaining === 1 ? '' : 's'} (${endDate})</span>`;
+            return `<li class="mb-1"><strong>${m.moa_title}</strong> (${m.agency_name}) ${tag}</li>`;
+        }).join('');
+
+        banner.innerHTML = `
+            <div class="alert alert-danger border-danger shadow-sm rounded-4 mb-4 d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3" role="alert">
+                <div class="d-flex align-items-start gap-3">
+                    <div class="bg-danger text-white rounded-circle p-2 d-flex align-items-center justify-content-center flex-shrink-0" style="width: 40px; height: 40px;">
+                        <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+                    </div>
+                    <div>
+                        <h6 class="fw-bold text-danger mb-1">Urgent MOA Expiration Notification (${alerts.length})</h6>
+                        <ul class="small text-dark mb-0 ps-3">${listItems}</ul>
+                    </div>
+                </div>
+                <a href="/partnerships.html" class="btn btn-sm btn-danger fw-bold px-3 flex-shrink-0">
+                    <i class="bi bi-arrow-repeat me-1"></i> Review & Renew MOAs
+                </a>
+            </div>
+        `;
+    } catch (err) {
+        console.error('MOA alert load error:', err);
     }
 }
 

@@ -78,6 +78,9 @@
                 <p class="text-muted small mb-0">Track legal agreements, active validity periods, and automatic expiration monitoring.</p>
             </div>
 
+            <!-- Urgent MOA Expiration Notification Banner -->
+            <div id="urgentMoaAlertContainer"></div>
+
             <!-- Feedback Alert Container -->
             <div id="alertContainer"></div>
 
@@ -127,6 +130,8 @@ async function loadPartnerships() {
         const data = await res.json();
         if (!data.success) return;
 
+        renderUrgentMoaBanner(data.urgentAlerts || []);
+
         const body = document.getElementById('moaTableBody');
         if (!data.partnerships || data.partnerships.length === 0) {
             body.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">No institutional partnership agreements found.</td></tr>`;
@@ -136,28 +141,78 @@ async function loadPartnerships() {
         body.innerHTML = data.partnerships.map(m => {
             const startDate = m.start_date ? new Date(m.start_date).toISOString().split('T')[0] : 'N/A';
             const endDate = m.end_date ? new Date(m.end_date).toISOString().split('T')[0] : 'N/A';
+            const days = parseInt(m.days_remaining, 10);
+
+            let rowClass = '';
+            let statusBadge = '';
+            let countdownNote = '';
+
+            if (m.urgency_level === 'expired') {
+                rowClass = 'table-danger bg-opacity-10';
+                statusBadge = `<span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 px-2 py-1"><i class="bi bi-exclamation-triangle-fill me-1"></i>Expired</span>`;
+                countdownNote = `<small class="d-block text-danger fw-semibold mt-1">Expired ${Math.abs(days)} day(s) ago</small>`;
+            } else if (m.urgency_level === 'critical') {
+                rowClass = 'table-warning';
+                statusBadge = `<span class="badge bg-danger text-white px-2 py-1"><i class="bi bi-alarm-fill me-1"></i>Urgent: ${days}d left</span>`;
+                countdownNote = `<small class="d-block text-danger fw-bold mt-1">Expires ${days === 0 ? 'today' : `in ${days} day(s)`}!</small>`;
+            } else if (m.urgency_level === 'warning') {
+                rowClass = 'table-warning bg-opacity-25';
+                statusBadge = `<span class="badge bg-warning text-dark border border-warning px-2 py-1"><i class="bi bi-exclamation-circle-fill me-1"></i>Expiring Soon (${days}d)</span>`;
+                countdownNote = `<small class="d-block text-warning-emphasis fw-semibold mt-1">${days} days remaining</small>`;
+            } else {
+                statusBadge = `<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1"><i class="bi bi-shield-check me-1"></i>Active</span>`;
+                countdownNote = `<small class="d-block text-muted mt-1">${days} days remaining</small>`;
+            }
             
             return `
-                <tr>
+                <tr class="${rowClass}">
                     <td class="fw-bold text-dark">${m.moa_title}</td>
                     <td>
                         <span class="d-block text-dark mb-0">${m.agency_name}</span>
                         <span class="badge bg-light text-dark border px-2 py-1" style="font-weight: 500;">${m.agency_type}</span>
                     </td>
                     <td class="text-secondary">${startDate}</td>
-                    <td class="text-secondary">${endDate}</td>
                     <td>
-                        ${m.status === 'Active' 
-                            ? `<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1"><i class="bi bi-shield-check me-1"></i>Active</span>`
-                            : `<span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 px-2 py-1"><i class="bi bi-exclamation-triangle-fill me-1"></i>Expired</span>`
-                        }
+                        <span class="fw-semibold text-dark">${endDate}</span>
+                        ${countdownNote}
                     </td>
+                    <td>${statusBadge}</td>
                 </tr>
             `;
         }).join('');
     } catch (err) {
         console.error('Error loading LGU partnerships:', err);
     }
+}
+
+function renderUrgentMoaBanner(urgentAlerts) {
+    const container = document.getElementById('urgentMoaAlertContainer');
+    if (!urgentAlerts || urgentAlerts.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const itemsHtml = urgentAlerts.map(m => {
+        const endStr = m.end_date ? new Date(m.end_date).toISOString().split('T')[0] : 'N/A';
+        const days = parseInt(m.days_remaining, 10);
+        const statusText = days < 0
+            ? `<span class="badge bg-danger ms-1">Expired ${Math.abs(days)}d ago (${endStr})</span>`
+            : `<span class="badge bg-warning text-dark border border-dark ms-1">Expires in ${days}d (${endStr})</span>`;
+        return `<li class="mb-1"><strong>${m.moa_title}</strong> (${m.agency_name}) ${statusText}</li>`;
+    }).join('');
+
+    container.innerHTML = `
+        <div class="alert alert-danger border-danger shadow-sm rounded-3 mb-4" role="alert">
+            <div class="d-flex align-items-start gap-3">
+                <i class="bi bi-exclamation-octagon-fill fs-3 text-danger mt-1"></i>
+                <div class="flex-grow-1">
+                    <h6 class="fw-bold text-danger mb-1">Urgent MOA Expiration Notice (${urgentAlerts.length} Agreement${urgentAlerts.length > 1 ? 's' : ''})</h6>
+                    <p class="small text-dark mb-2">Please coordinate with the OLLCF Extension Services Office to renew the following partnership agreements before or after expiration:</p>
+                    <ul class="small mb-0 ps-3">${itemsHtml}</ul>
+                </div>
+            </div>
+        </div>
+    `;
 }
 
 document.getElementById('logoutBtn').addEventListener('click', () => {

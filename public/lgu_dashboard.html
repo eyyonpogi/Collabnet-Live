@@ -91,6 +91,9 @@
                 </div>
             </div>
 
+            <!-- Urgent MOA Expiration Notification Banner -->
+            <div id="urgentMoaBanner"></div>
+
             <!-- Feedback Alert Container -->
             <div id="alertContainer"></div>
 
@@ -292,7 +295,6 @@
             </div>
           </div>
 
-          <!-- Proposal Lifespan Field -->
           <div class="mb-3">
             <label for="act_lifespan_days" class="form-label small fw-bold text-muted text-uppercase mb-1">PROPOSAL LIFESPAN (VALIDITY PERIOD)</label>
             <select id="act_lifespan_days" class="form-select">
@@ -382,13 +384,11 @@ async function loadLguDashboard(actId = 0) {
         const data = await res.json();
         if (!data.success) return;
 
-        // Display User Info
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
         const lguName = data.user_name || storedUser.full_name || 'LGU Vinzons';
         document.getElementById('sidebarUser').textContent = lguName;
         document.getElementById('headerUserName').textContent = lguName;
 
-        // Populate KPIs
         document.getElementById('statDepts').textContent = data.stats?.totalDepartments ?? 0;
         document.getElementById('statPending').textContent = data.stats?.totalPendingProposals ?? 0;
         document.getElementById('statApproved').textContent = data.stats?.totalApprovedActivities ?? 0;
@@ -414,9 +414,9 @@ async function loadLguDashboard(actId = 0) {
                         </td>
                         <td class="text-end">
                             <div class="d-inline-flex gap-1">
-                                <button onclick="openPinManager(${act.activity_id}, '${escapeHtml(act.title)}', '${act.time_in_passcode || ''}', '${act.time_out_passcode || ''}')" class="btn btn-sm btn-outline-secondary py-1 px-2 fw-bold" style="font-size: 0.75rem;">
+                                <a href="/lgu_pin_manager.html" class="btn btn-sm btn-outline-secondary py-1 px-2 fw-bold" style="font-size: 0.75rem;">
                                     <i class="bi bi-key-fill me-1"></i>PINs
-                                </button>
+                                </a>
                                 <button onclick="loadLguDashboard(${act.activity_id})" class="btn btn-sm btn-outline-primary py-1 px-2 fw-bold" style="font-size: 0.75rem;">
                                     <i class="bi bi-eye-fill me-1"></i>Logs
                                 </button>
@@ -428,9 +428,54 @@ async function loadLguDashboard(actId = 0) {
         }
 
         renderLogsInspector(data.inspectedLogs, actId);
+        loadUrgentMoaAlerts(token);
 
     } catch (err) {
         console.error('Failed to load LGU dashboard:', err);
+    }
+}
+
+async function loadUrgentMoaAlerts(token) {
+    try {
+        const res = await fetch('/api/partnerships', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const alerts = data.urgentAlerts || [];
+        const banner = document.getElementById('urgentMoaBanner');
+
+        if (alerts.length === 0) {
+            banner.innerHTML = '';
+            return;
+        }
+
+        const listItems = alerts.map(m => {
+            const endDate = m.end_date ? new Date(m.end_date).toISOString().split('T')[0] : 'N/A';
+            const tag = m.urgency === 'expired'
+                ? `<span class="badge bg-danger ms-1">Expired (${endDate})</span>`
+                : `<span class="badge bg-warning text-dark ms-1">Expires in ${m.days_remaining} day${m.days_remaining === 1 ? '' : 's'} (${endDate})</span>`;
+            return `<li class="mb-1"><strong>${m.moa_title}</strong> — ${m.agency_name} ${tag}</li>`;
+        }).join('');
+
+        banner.innerHTML = `
+            <div class="alert alert-danger border-danger shadow-sm rounded-4 mb-4 d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3" role="alert">
+                <div class="d-flex align-items-start gap-3">
+                    <div class="bg-danger text-white rounded-circle p-2 d-flex align-items-center justify-content-center flex-shrink-0" style="width: 40px; height: 40px;">
+                        <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+                    </div>
+                    <div>
+                        <h6 class="fw-bold text-danger mb-1">Urgent MOA Expiration Advisory (${alerts.length})</h6>
+                        <ul class="small text-dark mb-0 ps-3">${listItems}</ul>
+                    </div>
+                </div>
+                <a href="/lgu_partnerships.html" class="btn btn-sm btn-danger fw-bold px-3 flex-shrink-0">
+                    <i class="bi bi-file-earmark-text me-1"></i> View MOA Status
+                </a>
+            </div>
+        `;
+    } catch (err) {
+        console.error('MOA alert load error:', err);
     }
 }
 
@@ -579,50 +624,6 @@ document.getElementById('proposeActivityForm').addEventListener('submit', async 
     } catch (err) {
         console.error('Proposal submit error:', err);
         showAlert('danger', 'Failed to connect to the server.');
-    }
-});
-
-function openPinManager(activity_id, title, time_in, time_out) {
-    document.getElementById('pinActivityId').value = activity_id;
-    document.getElementById('pinActivityTitle').textContent = title;
-    document.getElementById('timeInPin').value = time_in;
-    document.getElementById('timeOutPin').value = time_out;
-
-    const modal = new bootstrap.Modal(document.getElementById('pinModal'));
-    modal.show();
-}
-
-function autoGeneratePins() {
-    document.getElementById('timeInPin').value = Math.floor(1000 + Math.random() * 9000);
-    document.getElementById('timeOutPin').value = Math.floor(1000 + Math.random() * 9000);
-}
-
-document.getElementById('pinForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const token = localStorage.getItem('token');
-    const activity_id = document.getElementById('pinActivityId').value;
-    const time_in_passcode = document.getElementById('timeInPin').value;
-    const time_out_passcode = document.getElementById('timeOutPin').value;
-
-    try {
-        const res = await fetch('/api/lgu/attendance/pins', {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ activity_id, time_in_passcode, time_out_passcode })
-        });
-        const data = await res.json();
-
-        const modalEl = document.getElementById('pinModal');
-        const modal = bootstrap.Modal.getInstance(modalEl);
-        if (modal) modal.hide();
-
-        if (res.ok) showAlert('success', data.message);
-        loadLguDashboard();
-    } catch (err) {
-        console.error('Save PINs error:', err);
     }
 });
 
