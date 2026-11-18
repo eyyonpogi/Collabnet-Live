@@ -97,7 +97,7 @@
                 </label>
                 <input type="file" id="verification_file" class="form-control" accept="image/*,.pdf" required>
                 <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">
-                    <i class="bi bi-shield-check text-primary me-1"></i>Upload a clear photo of your OLLCF School ID or current COR (JPG, PNG, or PDF, max 3MB) for fast admin verification.
+                    <i class="bi bi-shield-check text-primary me-1"></i>Upload a clear photo of your OLLCF School ID or current COR (JPG, PNG, or PDF, up to 20MB) for fast admin verification.
                 </small>
                 <div id="docPreviewBox" class="mt-2 d-none border rounded-3 p-2 bg-light text-center">
                     <img id="docImagePreview" src="" alt="ID Preview" class="img-fluid rounded d-none" style="max-height: 150px;">
@@ -141,6 +141,7 @@
 </div>
 
 <script>
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20 MB
 let processedDocBase64 = null;
 let processedDocName = null;
 
@@ -156,22 +157,29 @@ function togglePasswordVisibility(inputId, iconId) {
     }
 }
 
-// Handle Image Compression or PDF Base64 Conversion
+// Handle Image Compression or PDF Base64 Conversion (up to 20MB)
 document.getElementById('verification_file').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     const previewBox = document.getElementById('docPreviewBox');
     const imgPreview = document.getElementById('docImagePreview');
     const pdfPreview = document.getElementById('docPdfPreview');
+    const errorAlert = document.getElementById('errorAlert');
+
+    errorAlert.classList.add('d-none');
+    errorAlert.classList.remove('d-flex');
 
     if (!file) {
         processedDocBase64 = null;
+        processedDocName = null;
         previewBox.classList.add('d-none');
         return;
     }
 
-    if (file.size > 4 * 1024 * 1024) {
-        showError('File size exceeds 4MB limit. Please upload a smaller image or PDF.');
+    if (file.size > MAX_UPLOAD_BYTES) {
+        showError('File size exceeds the 20MB limit. Please upload a smaller image or PDF.');
         e.target.value = '';
+        processedDocBase64 = null;
+        previewBox.classList.add('d-none');
         return;
     }
 
@@ -179,20 +187,19 @@ document.getElementById('verification_file').addEventListener('change', async (e
     previewBox.classList.remove('d-none');
 
     if (file.type.startsWith('image/')) {
-        // Compress image via Canvas so DB stays fast
         const reader = new FileReader();
         reader.onload = (event) => {
             const img = new Image();
             img.onload = () => {
                 const canvas = document.createElement('canvas');
-                const MAX_WIDTH = 1000;
+                const MAX_WIDTH = 1200;
                 const scaleSize = img.width > MAX_WIDTH ? MAX_WIDTH / img.width : 1;
                 canvas.width = img.width * scaleSize;
                 canvas.height = img.height * scaleSize;
 
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                processedDocBase64 = canvas.toDataURL('image/jpeg', 0.75);
+                processedDocBase64 = canvas.toDataURL('image/jpeg', 0.8);
 
                 imgPreview.src = processedDocBase64;
                 imgPreview.classList.remove('d-none');
@@ -202,11 +209,10 @@ document.getElementById('verification_file').addEventListener('change', async (e
         };
         reader.readAsDataURL(file);
     } else {
-        // PDF file
         const reader = new FileReader();
         reader.onload = (event) => {
             processedDocBase64 = event.target.result;
-            document.getElementById('docPdfName').textContent = file.name;
+            document.getElementById('docPdfName').textContent = `${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)`;
             pdfPreview.classList.remove('d-none');
             imgPreview.classList.add('d-none');
         };
@@ -238,7 +244,7 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
   }
 
   if (!processedDocBase64) {
-    showError('Please upload your School ID or COR document.');
+    showError('Please upload your School ID or COR document (up to 20MB).');
     return;
   }
 
@@ -263,7 +269,7 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
     const contentType = res.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
       if (res.status === 413) {
-        showError('Uploaded file is too large. Please upload a smaller image or PDF.');
+        showError('Uploaded file exceeds the server payload limit (20MB max).');
       } else {
         showError(`Server error (${res.status}). Please try again.`);
       }

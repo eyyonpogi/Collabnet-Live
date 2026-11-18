@@ -14,8 +14,9 @@ const partnershipsRoutes = require('./routes/partnerships');
 
 const app = express();
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Allow up to 20MB binary uploads encoded as Base64 JSON (~27MB payload)
+app.use(express.json({ limit: '35mb' }));
+app.use(express.urlencoded({ extended: true, limit: '35mb' }));
 
 app.use(session({
   secret: process.env.SESSION_SECRET || 'collabnet_secret_key_2026',
@@ -37,8 +38,6 @@ app.use((req, res, next) => {
 
 app.use(express.static('assets'));
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.json({ limit: '15mb' }));
-app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/student', studentRoutes);
@@ -70,11 +69,9 @@ app.get('/api/public/verify-certificate/:cert_no', async (req, res) => {
     }
 
     try {
-        // Extract raw numeric participant_id from format like 'CERT-2026-00070' or '70'
         const numericMatch = cert_no.match(/\d+$/);
         const extractedId = numericMatch ? parseInt(numericMatch[0], 10) : 0;
 
-        // Simplified query avoiding joins on optional/unmigrated tables
         const query = `
             SELECT 
                 p.participant_id,
@@ -106,7 +103,6 @@ app.get('/api/public/verify-certificate/:cert_no', async (req, res) => {
 
         const record = result.rows[0];
 
-        // Verify hours and completion status
         const rendered = parseFloat(record.hours_rendered || 0);
         const target = parseFloat(record.estimated_hours || 0);
         const isCompleted = record.target_reached === true || rendered >= target;

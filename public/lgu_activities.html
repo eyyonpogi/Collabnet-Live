@@ -272,7 +272,7 @@
             </label>
             <input type="file" id="act_proposal_file" class="form-control" accept=".pdf,.doc,.docx,image/*" required>
             <small class="form-text text-muted">
-              <i class="bi bi-paperclip text-primary me-1"></i>Attach the formal activity proposal, letter of request, or program schedule (max 5MB) for School Admin review.
+              <i class="bi bi-paperclip text-primary me-1"></i>Attach the formal activity proposal, letter of request, or program schedule (up to 20MB) for School Admin review.
             </small>
             <div id="attachmentBadgeBox" class="mt-2 d-none">
               <span class="badge bg-primary bg-opacity-10 text-primary border border-primary px-2 py-1">
@@ -395,6 +395,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+const MAX_PROPOSAL_BYTES = 20 * 1024 * 1024; // 20 MB
 let currentStatusFilter = 'Pending';
 let loadedActivities = [];
 let filteredActivities = [];
@@ -416,14 +417,19 @@ document.getElementById('act_proposal_file').addEventListener('change', (e) => {
         return;
     }
 
-    if (file.size > 6 * 1024 * 1024) {
-        showAlert('danger', 'Attachment exceeds 6MB limit. Please upload a smaller file.');
+    if (file.size > MAX_PROPOSAL_BYTES) {
+        showAlert('danger', 'Attachment exceeds 20MB limit. Please upload a smaller file.');
         e.target.value = '';
+        proposalFileBase64 = null;
+        badgeBox.classList.add('d-none');
         return;
     }
 
     proposalFileName = file.name;
-    nameLabel.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+    const sizeLabel = file.size >= 1024 * 1024
+        ? `${(file.size / (1024 * 1024)).toFixed(2)} MB`
+        : `${(file.size / 1024).toFixed(1)} KB`;
+    nameLabel.textContent = `${file.name} (${sizeLabel})`;
     badgeBox.classList.remove('d-none');
 
     if (file.type.startsWith('image/')) {
@@ -565,7 +571,7 @@ async function loadLguDepartmentsDropdown() {
 
         select.innerHTML = `<option value="" selected>-- Main LGU Vinzons Executive Office --</option>`;
         data.departments.forEach(dept => {
-            select.innerHTML += `<option value="${dept.dept_id}">${dept.dept_name}</option>`;
+            select.innerHTML += `<option value="${dept.dept_id}">${dept.display_name || dept.dept_name}</option>`;
         });
     } catch (err) {
         console.error('Error fetching departments for dropdown:', err);
@@ -805,7 +811,7 @@ document.getElementById('proposeActivityForm').addEventListener('submit', async 
     }
 
     if (!proposalFileBase64) {
-        showAlert('danger', 'Please attach the supporting activity proposal document.');
+        showAlert('danger', 'Please attach the supporting activity proposal document (up to 20MB).');
         return;
     }
 
@@ -842,7 +848,7 @@ document.getElementById('proposeActivityForm').addEventListener('submit', async 
                 const errData = await res.json();
                 showAlert('danger', errData.error || errData.message || 'Failed to submit proposal.');
             } else {
-                showAlert('danger', `Server Error (${res.status}): File may be too large or server is restarting.`);
+                showAlert('danger', `Server Error (${res.status}): File may exceed 20MB or server is restarting.`);
             }
             return;
         }
