@@ -98,6 +98,29 @@
 
             <!-- Student Logs Table Card -->
             <div class="cn-card p-3">
+                <!-- Search & Status Filter Toolbar -->
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                    <div class="d-flex align-items-center gap-2">
+                        <h5 class="fw-bold text-dark mb-0 fs-6">Volunteer Attendance Records</h5>
+                        <span id="logsCountBadge" class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-2 py-1">
+                            0 Logs
+                        </span>
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-2">
+                        <select id="logStatusFilter" class="form-select form-select-sm" style="width: 175px;" onchange="applyLogFilters()">
+                            <option value="ALL">All Statuses</option>
+                            <option value="COMPLETED">Completed</option>
+                            <option value="PARTIAL">Partial Hours</option>
+                            <option value="IN_PROGRESS">In Progress</option>
+                        </select>
+                        <div class="input-group input-group-sm" style="width: 250px;">
+                            <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+                            <input type="text" id="logSearchInput" class="form-control" placeholder="Search student name or ID..." oninput="applyLogFilters()">
+                        </div>
+                    </div>
+                </div>
+
                 <div class="table-responsive">
                     <table class="table table-hover align-middle mb-0" style="font-size: 0.875rem;">
                         <thead class="table-light text-muted small text-uppercase">
@@ -115,6 +138,9 @@
                         </tbody>
                     </table>
                 </div>
+
+                <!-- Pagination Bar -->
+                <div id="logsPagination" class="d-flex flex-wrap justify-content-between align-items-center pt-3 mt-3 border-top gap-2"></div>
             </div>
         </main>
     </div>
@@ -123,6 +149,10 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 let loadedActivities = [];
+let allLogs = [];
+let filteredLogs = [];
+let currentPage = 1;
+const PAGE_SIZE = 10;
 
 async function loadApprovedActivities() {
     const token = localStorage.getItem('token');
@@ -176,6 +206,8 @@ async function fetchActivityLogs(actId) {
     const badge = document.getElementById('targetHoursBadge');
 
     if (!actId || actId == 0) {
+        allLogs = [];
+        applyLogFilters();
         body.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4">Please select an activity above to view student time logs.</td></tr>`;
         badge.textContent = `-- Hours`;
         return;
@@ -189,26 +221,103 @@ async function fetchActivityLogs(actId) {
         });
         const data = await res.json();
 
-        if (!data.success || !data.inspectedLogs || data.inspectedLogs.length === 0) {
-            body.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4">No student volunteers have logged attendance for this activity yet.</td></tr>`;
-            return;
-        }
-
         const selectedAct = loadedActivities.find(a => a.activity_id == actId);
         if (selectedAct) {
             badge.textContent = `${selectedAct.estimated_hours || 0} Hours Target`;
         }
 
-        renderLogsTable(data.inspectedLogs);
+        if (!data.success || !data.inspectedLogs || data.inspectedLogs.length === 0) {
+            allLogs = [];
+            applyLogFilters();
+            body.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4">No student volunteers have logged attendance for this activity yet.</td></tr>`;
+            return;
+        }
+
+        allLogs = data.inspectedLogs;
+        applyLogFilters();
 
     } catch (err) {
         console.error('Error fetching logs:', err);
+        allLogs = [];
+        applyLogFilters();
         body.innerHTML = `<tr><td colspan="6" class="text-center text-danger py-4">Failed to load student attendance logs.</td></tr>`;
     }
 }
 
+function getLogCategory(st) {
+    const rendered = parseFloat(st.hours_rendered || 0);
+    const target = parseFloat(st.target_hours || 0);
+    const reached = st.target_reached === true || (target > 0 && rendered >= target);
+
+    if (st.volunteer_status === 'Completed' || reached) return 'COMPLETED';
+    if (st.formatted_time_in && st.formatted_time_out) return 'PARTIAL';
+    return 'IN_PROGRESS';
+}
+
+function applyLogFilters() {
+    const q = (document.getElementById('logSearchInput')?.value || '').toLowerCase().trim();
+    const statusFilter = document.getElementById('logStatusFilter')?.value || 'ALL';
+
+    filteredLogs = allLogs.filter(st => {
+        const matchesQuery = !q ||
+            (st.full_name || '').toLowerCase().includes(q) ||
+            (st.student_id || '').toLowerCase().includes(q) ||
+            (st.email || '').toLowerCase().includes(q);
+        const matchesStatus = statusFilter === 'ALL' || getLogCategory(st) === statusFilter;
+        return matchesQuery && matchesStatus;
+    });
+
+    document.getElementById('logsCountBadge').textContent = `${filteredLogs.length} Logs`;
+    currentPage = 1;
+    renderLogsPage();
+}
+
+function goToLogsPage(page) {
+    const totalPages = Math.max(1, Math.ceil(filteredLogs.length / PAGE_SIZE));
+    currentPage = Math.min(Math.max(1, page), totalPages);
+    renderLogsPage();
+}
+
+function renderLogsPage() {
+    const total = filteredLogs.length;
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    if (currentPage > totalPages) currentPage = totalPages;
+
+    const startIdx = (currentPage - 1) * PAGE_SIZE;
+    const pageItems = filteredLogs.slice(startIdx, startIdx + PAGE_SIZE);
+
+    renderLogsTable(pageItems);
+    renderLogsPaginationBar(total, startIdx, pageItems.length, totalPages);
+}
+
+function renderLogsPaginationBar(total, startIdx, count, totalPages) {
+    const bar = document.getElementById('logsPagination');
+    if (total === 0) {
+        bar.innerHTML = `<small class="text-muted">Showing 0 records</small>`;
+        return;
+    }
+
+    bar.innerHTML = `
+        <small class="text-muted">Showing <strong>${startIdx + 1}–${startIdx + count}</strong> of <strong>${total}</strong> logs</small>
+        <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-secondary" onclick="goToLogsPage(${currentPage - 1})" ${currentPage <= 1 ? 'disabled' : ''}>
+                <i class="bi bi-chevron-left"></i> Prev
+            </button>
+            <span class="btn btn-light border disabled text-dark fw-semibold">Page ${currentPage} of ${totalPages}</span>
+            <button class="btn btn-outline-secondary" onclick="goToLogsPage(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled' : ''}>
+                Next <i class="bi bi-chevron-right"></i>
+            </button>
+        </div>
+    `;
+}
+
 function renderLogsTable(logs) {
     const body = document.getElementById('logsTableBody');
+
+    if (!logs || logs.length === 0) {
+        body.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4">No attendance logs match the current search/filter.</td></tr>`;
+        return;
+    }
 
     body.innerHTML = logs.map(st => {
         const formatTime = (iso) => iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
