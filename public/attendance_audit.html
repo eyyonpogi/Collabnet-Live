@@ -13,6 +13,33 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <!-- Custom Theme CSS -->
     <link href="/assets/css/collabnet-theme.css" rel="stylesheet">
+    <style>
+        .print-only-block { display: none; }
+
+        @media print {
+            body { background: #fff !important; color: #000 !important; font-size: 11pt; }
+            .cn-sidebar, .cn-topbar, .no-print, #alertContainer, #auditPagination { display: none !important; }
+            .cn-wrapper, .cn-main, .cn-content {
+                display: block !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+                max-width: 100% !important;
+            }
+            .cn-card {
+                border: 1px solid #dee2e6 !important;
+                box-shadow: none !important;
+                padding: 12px !important;
+                margin-bottom: 14px !important;
+                break-inside: avoid;
+            }
+            .print-only-block { display: block !important; }
+            .table { font-size: 9.5pt !important; border-color: #adb5bd !important; }
+            .table th, .table td { padding: 6px 8px !important; }
+            .badge { border: 1px solid #6c757d !important; color: #000 !important; background: transparent !important; }
+            .alert { border: 1px solid #adb5bd !important; background: #f8f9fa !important; color: #000 !important; }
+        }
+    </style>
 </head>
 <body>
 
@@ -72,22 +99,44 @@
 
         <!-- Page Content -->
         <main class="cn-content">
+            <!-- Official Institutional Print Header (Visible only when printing) -->
+            <div class="print-only-block border-bottom border-2 border-dark pb-3 mb-4">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="text-uppercase fw-bold text-muted" style="font-size: 0.72rem; letter-spacing: 0.8px;">
+                            Our Lady of Lourdes College Foundation • Daet, Camarines Norte
+                        </div>
+                        <h4 class="fw-bold text-dark mb-0">Community Extension Services &amp; LGU Vinzons Partnership</h4>
+                        <div class="fw-semibold text-secondary small">Official Student Attendance &amp; Certificate Issuance Audit Report</div>
+                    </div>
+                    <div class="text-end small">
+                        <div class="fw-bold">Generated via CollabNet</div>
+                        <div id="printTimestamp" class="text-muted">--</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Header Title Bar -->
-            <div class="d-flex justify-content-between align-items-center mb-4">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4 no-print">
                 <div>
                     <h3 class="fw-bold mb-1 text-dark">Student Attendance & Certificate Audit</h3>
                     <p class="text-muted small mb-0">Automated system tracking of student service hours, early departure reasons, and automatic certificate issuance.</p>
                 </div>
-                <span class="btn btn-primary fw-bold btn-sm px-3 py-2 shadow-sm pointer-events-none" style="cursor: default;">
-                    OLLCF Extension Office
-                </span>
+                <div class="d-flex align-items-center gap-2">
+                    <button type="button" onclick="printAuditReport()" class="btn btn-outline-dark btn-sm fw-bold px-3 py-2 shadow-sm">
+                        <i class="bi bi-printer-fill me-1"></i> Print / Export PDF
+                    </button>
+                    <span class="btn btn-primary fw-bold btn-sm px-3 py-2 shadow-sm pointer-events-none" style="cursor: default;">
+                        OLLCF Extension Office
+                    </span>
+                </div>
             </div>
 
             <!-- Feedback Alert Container -->
             <div id="alertContainer"></div>
 
             <!-- Activity Selector Card -->
-            <div class="cn-card p-3 mb-4">
+            <div class="cn-card p-3 mb-4 no-print">
                 <div class="w-100">
                     <label class="form-label-custom d-block mb-1 text-uppercase" style="font-size: 0.68rem; letter-spacing: 0.5px;">SELECT APPROVED EXTENSION ACTIVITY</label>
                     <select id="activitySelector" class="form-select form-control-custom fw-semibold" onchange="handleSelectChange(this.value)">
@@ -131,7 +180,7 @@
                         </span>
                     </div>
 
-                    <div class="d-flex flex-wrap gap-2">
+                    <div class="d-flex flex-wrap gap-2 no-print">
                         <select id="certStatusFilter" class="form-select form-select-sm" style="width: 195px;" onchange="applyAuditFilters()">
                             <option value="ALL">All Certificate Statuses</option>
                             <option value="ISSUED">Automatically Issued</option>
@@ -165,6 +214,24 @@
 
                 <!-- Pagination Bar -->
                 <div id="auditPagination" class="d-flex flex-wrap justify-content-between align-items-center pt-3 mt-3 border-top gap-2"></div>
+            </div>
+
+            <!-- Official Signatory Footer (Visible only when printing) -->
+            <div class="print-only-block mt-5 pt-4">
+                <div class="row g-4 text-center">
+                    <div class="col-6">
+                        <div class="border-top border-dark mx-4 pt-2">
+                            <strong class="d-block">Extension Services Director</strong>
+                            <small class="text-muted">Our Lady of Lourdes College Foundation</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="border-top border-dark mx-4 pt-2">
+                            <strong class="d-block">LGU Extension Coordinator</strong>
+                            <small class="text-muted">Municipality of Vinzons, Camarines Norte</small>
+                        </div>
+                    </div>
+                </div>
             </div>
         </main>
     </div>
@@ -420,6 +487,25 @@ function renderAuditTableRows(participants) {
         `;
     }).join('');
 }
+
+function prepareAuditPrintView() {
+    document.getElementById('printTimestamp').textContent = `Printed on ${new Date().toLocaleString()}`;
+    if (filteredParticipants.length > 0) {
+        renderAuditTableRows(filteredParticipants);
+    }
+}
+
+function restoreAuditPaginatedView() {
+    renderAuditPage();
+}
+
+function printAuditReport() {
+    prepareAuditPrintView();
+    window.print();
+}
+
+window.addEventListener('beforeprint', prepareAuditPrintView);
+window.addEventListener('afterprint', restoreAuditPaginatedView);
 
 function showAlert(type, msg) {
     document.getElementById('alertContainer').innerHTML = `
