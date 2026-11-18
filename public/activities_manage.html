@@ -81,30 +81,57 @@
             <!-- Feedback Alert Container -->
             <div id="alertContainer"></div>
 
-            <!-- Status Filter Tabs Card -->
-            <div class="cn-card p-2 mb-4">
-                <ul class="nav nav-pills gap-1">
-                    <li class="nav-item">
-                        <button class="nav-link active bg-warning text-dark py-1 px-3 fw-semibold small" id="tabPending" onclick="switchTab('Pending')">
-                            <i class="bi bi-hourglass-split me-1"></i>Pending Review
-                        </button>
-                    </li>
-                    <li class="nav-item">
-                        <button class="nav-link text-secondary py-1 px-3 fw-semibold small" id="tabApproved" onclick="switchTab('Approved')">
-                            <i class="bi bi-check-circle-fill me-1"></i>Approved Activities
-                        </button>
-                    </li>
-                    <li class="nav-item">
-                        <button class="nav-link text-secondary py-1 px-3 fw-semibold small" id="tabRejected" onclick="switchTab('Rejected')">
-                            <i class="bi bi-x-circle-fill me-1"></i>Rejected Proposals
-                        </button>
-                    </li>
-                    <li class="nav-item">
-                        <button class="nav-link text-secondary py-1 px-3 fw-semibold small" id="tabAll" onclick="switchTab('All')">
-                            All Activities
-                        </button>
-                    </li>
-                </ul>
+            <!-- Status Tabs + Search & Course Filter Toolbar -->
+            <div class="cn-card p-3 mb-4">
+                <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
+                    <ul class="nav nav-pills gap-1">
+                        <li class="nav-item">
+                            <button class="nav-link active bg-warning text-dark py-1 px-3 fw-semibold small" id="tabPending" onclick="switchTab('Pending')">
+                                <i class="bi bi-hourglass-split me-1"></i>Pending Review
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link text-secondary py-1 px-3 fw-semibold small" id="tabApproved" onclick="switchTab('Approved')">
+                                <i class="bi bi-check-circle-fill me-1"></i>Approved Activities
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link text-secondary py-1 px-3 fw-semibold small" id="tabRejected" onclick="switchTab('Rejected')">
+                                <i class="bi bi-x-circle-fill me-1"></i>Rejected Proposals
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link text-secondary py-1 px-3 fw-semibold small" id="tabAll" onclick="switchTab('All')">
+                                All Activities
+                            </button>
+                        </li>
+                    </ul>
+
+                    <div class="d-flex flex-wrap gap-2">
+                        <div class="input-group input-group-sm" style="width: 240px;">
+                            <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+                            <input type="text" id="activitySearchInput" class="form-control" placeholder="Search title or location..." oninput="applyActivityFilters()">
+                        </div>
+                        <select id="courseFilterSelect" class="form-select form-select-sm" style="width: 170px;" onchange="applyActivityFilters()">
+                            <option value="ALL">All Courses</option>
+                            <option value="All Courses">Open to All Courses</option>
+                            <option value="BSIT">BSIT</option>
+                            <option value="BSCS">BSCS</option>
+                            <option value="BSBA">BSBA</option>
+                            <option value="BEEd">BEEd</option>
+                            <option value="BSEd">BSEd</option>
+                            <option value="BSCrim">BSCrim</option>
+                            <option value="BSHM">BSHM</option>
+                            <option value="BSMT">BSMT</option>
+                            <option value="BSMarE">BSMarE</option>
+                            <option value="BSN">BSN</option>
+                            <option value="Midwifery">Midwifery</option>
+                            <option value="BS MedTech">BS MedTech</option>
+                            <option value="BSPsych">BSPsych</option>
+                            <option value="Juris Doctor">Juris Doctor</option>
+                        </select>
+                    </div>
+                </div>
             </div>
 
             <!-- Main Activities Table Card -->
@@ -127,6 +154,9 @@
                         </tbody>
                     </table>
                 </div>
+
+                <!-- Pagination Bar -->
+                <div id="activitiesPagination" class="d-flex flex-wrap justify-content-between align-items-center pt-3 mt-3 border-top gap-2"></div>
             </div>
         </main>
     </div>
@@ -166,7 +196,6 @@
                     </div>
                 </div>
 
-                <!-- Downloadable Attachment Review Box -->
                 <div id="modalAttachmentBox" class="mb-3"></div>
 
                 <h6 class="fw-bold text-dark mb-1">Description & Objectives:</h6>
@@ -254,6 +283,9 @@
 <script>
 let currentStatusFilter = 'Pending';
 let loadedActivities = [];
+let filteredActivities = [];
+let currentPage = 1;
+const PAGE_SIZE = 10;
 
 async function loadActivities(status = 'Pending') {
     currentStatusFilter = status;
@@ -285,18 +317,78 @@ async function loadActivities(status = 'Pending') {
         }
 
         loadedActivities = data.activities || [];
-        renderActivitiesTable(loadedActivities);
+        applyActivityFilters();
     } catch (err) {
         console.error('Error fetching activities:', err);
         body.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-4">Failed to load activities. Check browser console.</td></tr>`;
     }
 }
 
+function applyActivityFilters() {
+    const q = (document.getElementById('activitySearchInput')?.value || '').toLowerCase().trim();
+    const courseFilter = document.getElementById('courseFilterSelect')?.value || 'ALL';
+
+    filteredActivities = loadedActivities.filter(act => {
+        const matchesSearch = !q ||
+            (act.title || '').toLowerCase().includes(q) ||
+            (act.location || '').toLowerCase().includes(q) ||
+            (act.description || '').toLowerCase().includes(q);
+
+        const matchesCourse = courseFilter === 'ALL' || (act.target_course || 'All Courses') === courseFilter;
+        return matchesSearch && matchesCourse;
+    });
+
+    currentPage = 1;
+    renderActivitiesPage();
+}
+
+function goToActivityPage(page) {
+    const totalPages = Math.max(1, Math.ceil(filteredActivities.length / PAGE_SIZE));
+    currentPage = Math.min(Math.max(1, page), totalPages);
+    renderActivitiesPage();
+}
+
+function renderActivitiesPage() {
+    const total = filteredActivities.length;
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    if (currentPage > totalPages) currentPage = totalPages;
+
+    const startIdx = (currentPage - 1) * PAGE_SIZE;
+    const pageItems = filteredActivities.slice(startIdx, startIdx + PAGE_SIZE);
+
+    renderActivitiesTable(pageItems);
+    renderPaginationBar(total, startIdx, pageItems.length, totalPages);
+}
+
+function renderPaginationBar(total, startIdx, count, totalPages) {
+    const bar = document.getElementById('activitiesPagination');
+    if (total === 0) {
+        bar.innerHTML = `<small class="text-muted">Showing 0 records</small>`;
+        return;
+    }
+
+    const from = startIdx + 1;
+    const to = startIdx + count;
+
+    bar.innerHTML = `
+        <small class="text-muted">Showing <strong>${from}–${to}</strong> of <strong>${total}</strong> activities</small>
+        <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-secondary" onclick="goToActivityPage(${currentPage - 1})" ${currentPage <= 1 ? 'disabled' : ''}>
+                <i class="bi bi-chevron-left"></i> Prev
+            </button>
+            <span class="btn btn-light border disabled text-dark fw-semibold">Page ${currentPage} of ${totalPages}</span>
+            <button class="btn btn-outline-secondary" onclick="goToActivityPage(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled' : ''}>
+                Next <i class="bi bi-chevron-right"></i>
+            </button>
+        </div>
+    `;
+}
+
 function renderActivitiesTable(activities) {
     const body = document.getElementById('activitiesTableBody');
     
     if (!activities || activities.length === 0) {
-        body.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-4">No activities found under the '<strong>${currentStatusFilter}</strong>' status filter.</td></tr>`;
+        body.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-4">No matching activities found under '<strong>${currentStatusFilter}</strong>'.</td></tr>`;
         return;
     }
 

@@ -123,12 +123,29 @@
 
             <!-- Joined Student Volunteers Table Card -->
             <div class="cn-card p-3">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5 class="fw-bold text-dark mb-0 fs-6">Joined Student Volunteers Audit Log</h5>
-                    <span id="participantCountBadge" class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-2 py-1">
-                        Total Participants: 0
-                    </span>
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                    <div class="d-flex align-items-center gap-2">
+                        <h5 class="fw-bold text-dark mb-0 fs-6">Joined Student Volunteers Audit Log</h5>
+                        <span id="participantCountBadge" class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-2 py-1">
+                            Total Participants: 0
+                        </span>
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-2">
+                        <select id="certStatusFilter" class="form-select form-select-sm" style="width: 195px;" onchange="applyAuditFilters()">
+                            <option value="ALL">All Certificate Statuses</option>
+                            <option value="ISSUED">Automatically Issued</option>
+                            <option value="INELIGIBLE">Ineligible (Early Out)</option>
+                            <option value="IN_PROGRESS">In Progress</option>
+                            <option value="PENDING">Pending Log</option>
+                        </select>
+                        <div class="input-group input-group-sm" style="width: 250px;">
+                            <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+                            <input type="text" id="auditSearchInput" class="form-control" placeholder="Search student, ID, or cert #..." oninput="applyAuditFilters()">
+                        </div>
+                    </div>
                 </div>
+
                 <div class="table-responsive">
                     <table class="table table-hover align-middle mb-0" style="font-size: 0.875rem;">
                         <thead class="table-light text-muted small text-uppercase">
@@ -145,6 +162,9 @@
                         </tbody>
                     </table>
                 </div>
+
+                <!-- Pagination Bar -->
+                <div id="auditPagination" class="d-flex flex-wrap justify-content-between align-items-center pt-3 mt-3 border-top gap-2"></div>
             </div>
         </main>
     </div>
@@ -153,6 +173,11 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 let currentActivityId = null;
+let currentActivityMeta = null;
+let allParticipants = [];
+let filteredParticipants = [];
+let auditPage = 1;
+const PAGE_SIZE = 10;
 
 async function initAuditPage() {
     const token = localStorage.getItem('token');
@@ -222,6 +247,7 @@ async function loadAuditLogs(activityId) {
         }
 
         const act = data.activity;
+        currentActivityMeta = act;
         const formattedDate = act.target_date ? new Date(act.target_date).toISOString().split('T')[0] : 'N/A';
         
         document.getElementById('actTitle').textContent = act.title;
@@ -231,98 +257,168 @@ async function loadAuditLogs(activityId) {
         document.getElementById('actCapacity').textContent = `${act.max_volunteers || 0} Max Capacity`;
         document.getElementById('activitySummaryCard').classList.remove('d-none');
 
-        const participants = data.participants || [];
-        document.getElementById('participantCountBadge').textContent = `Total Participants: ${participants.length}`;
-        const body = document.getElementById('auditTableBody');
-
-        if (participants.length === 0) {
-            body.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">No student volunteers have joined this activity yet.</td></tr>`;
-            return;
-        }
-
-        body.innerHTML = participants.map(p => {
-            const hasIn = Boolean(p.formatted_time_in || p.time_in);
-            const hasOut = Boolean(p.formatted_time_out || p.time_out);
-            const rendered = parseFloat(p.hours_rendered || 0);
-            const target = parseFloat(p.target_hours || act.estimated_hours || 0);
-            
-            const isEligible = p.is_eligible;
-            const isEarlyOut = p.is_early_out;
-
-            const formatTime = (iso) => {
-                if (!iso) return null;
-                const d = new Date(iso);
-                return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-            };
-
-            let statusCell = '';
-
-            if (isEligible) {
-                statusCell = `
-                    <div class="text-center">
-                        <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1">
-                            <i class="bi bi-patch-check-fill me-1"></i>Automatically Issued
-                        </span>
-                        <small class="d-block text-muted font-monospace mt-1" style="font-size: 0.68rem;">${p.certificate_no || ''}</small>
-                    </div>
-                `;
-            } else if (isEarlyOut || p.early_out_reason) {
-                statusCell = `
-                    <div class="text-center">
-                        <span class="badge bg-warning bg-opacity-10 text-warning-emphasis border border-warning border-opacity-25 px-2 py-1">
-                            <i class="bi bi-exclamation-triangle-fill me-1"></i>Ineligible (Early Out)
-                        </span>
-                    </div>
-                `;
-            } else if (hasIn && !hasOut) {
-                statusCell = `
-                    <div class="text-center">
-                        <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-2 py-1">
-                            <i class="bi bi-clock-history me-1"></i>In Progress
-                        </span>
-                    </div>
-                `;
-            } else {
-                statusCell = `
-                    <div class="text-center">
-                        <span class="badge bg-secondary bg-opacity-10 text-secondary border px-2 py-1">
-                            <i class="bi bi-dash-circle me-1"></i>Pending Log
-                        </span>
-                    </div>
-                `;
-            }
-
-            return `
-                <tr>
-                    <td>
-                        <strong class="text-dark d-block">${p.full_name}</strong>
-                        <small class="text-muted">${p.course || 'BSIT'} • ${p.email} (ID: ${p.student_id || 'N/A'})</small>
-                    </td>
-                    <td>
-                        <small class="d-block text-success fw-semibold">In: ${hasIn ? formatTime(p.formatted_time_in || p.time_in) : '--:--'}</small>
-                        <small class="d-block text-info fw-semibold">Out: ${hasOut ? formatTime(p.formatted_time_out || p.time_out) : '--:--'}</small>
-                    </td>
-                    <td>
-                        <span class="badge ${isEligible ? 'bg-success' : 'bg-warning text-dark'} px-2 py-1">
-                            ${rendered.toFixed(2)} / ${target.toFixed(2)} hrs
-                        </span>
-                    </td>
-                    <td>
-                        ${p.early_out_reason ? `
-                            <div class="alert alert-warning py-1 px-2 mb-0" style="font-size: 0.75rem; max-width: 240px;">
-                                <i class="bi bi-exclamation-circle-fill me-1 text-warning-emphasis"></i>
-                                <strong>Reason:</strong> ${p.early_out_reason}
-                            </div>
-                        ` : '<span class="text-muted small">None (Full Hours Completed)</span>'}
-                    </td>
-                    <td class="text-center">${statusCell}</td>
-                </tr>
-            `;
-        }).join('');
-
+        allParticipants = data.participants || [];
+        applyAuditFilters();
     } catch (err) {
         console.error('Error loading audit logs:', err);
     }
+}
+
+function getParticipantCategory(p) {
+    const hasIn = Boolean(p.formatted_time_in || p.time_in);
+    const hasOut = Boolean(p.formatted_time_out || p.time_out);
+    if (p.is_eligible) return 'ISSUED';
+    if (p.is_early_out || p.early_out_reason) return 'INELIGIBLE';
+    if (hasIn && !hasOut) return 'IN_PROGRESS';
+    return 'PENDING';
+}
+
+function applyAuditFilters() {
+    const q = (document.getElementById('auditSearchInput')?.value || '').toLowerCase().trim();
+    const statusFilter = document.getElementById('certStatusFilter')?.value || 'ALL';
+
+    filteredParticipants = allParticipants.filter(p => {
+        const matchesSearch = !q ||
+            (p.full_name || '').toLowerCase().includes(q) ||
+            (p.student_id || '').toLowerCase().includes(q) ||
+            (p.course || '').toLowerCase().includes(q) ||
+            (p.certificate_no || '').toLowerCase().includes(q);
+        const matchesStatus = statusFilter === 'ALL' || getParticipantCategory(p) === statusFilter;
+        return matchesSearch && matchesStatus;
+    });
+
+    document.getElementById('participantCountBadge').textContent = `Total Participants: ${filteredParticipants.length}`;
+    auditPage = 1;
+    renderAuditPage();
+}
+
+function goToAuditPage(page) {
+    const totalPages = Math.max(1, Math.ceil(filteredParticipants.length / PAGE_SIZE));
+    auditPage = Math.min(Math.max(1, page), totalPages);
+    renderAuditPage();
+}
+
+function renderAuditPage() {
+    const total = filteredParticipants.length;
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    if (auditPage > totalPages) auditPage = totalPages;
+
+    const startIdx = (auditPage - 1) * PAGE_SIZE;
+    const pageItems = filteredParticipants.slice(startIdx, startIdx + PAGE_SIZE);
+
+    renderAuditTableRows(pageItems);
+    renderAuditPaginationBar(total, startIdx, pageItems.length, totalPages);
+}
+
+function renderAuditPaginationBar(total, startIdx, count, totalPages) {
+    const bar = document.getElementById('auditPagination');
+    if (total === 0) {
+        bar.innerHTML = `<small class="text-muted">Showing 0 records</small>`;
+        return;
+    }
+
+    bar.innerHTML = `
+        <small class="text-muted">Showing <strong>${startIdx + 1}–${startIdx + count}</strong> of <strong>${total}</strong> participants</small>
+        <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-secondary" onclick="goToAuditPage(${auditPage - 1})" ${auditPage <= 1 ? 'disabled' : ''}>
+                <i class="bi bi-chevron-left"></i> Prev
+            </button>
+            <span class="btn btn-light border disabled text-dark fw-semibold">Page ${auditPage} of ${totalPages}</span>
+            <button class="btn btn-outline-secondary" onclick="goToAuditPage(${auditPage + 1})" ${auditPage >= totalPages ? 'disabled' : ''}>
+                Next <i class="bi bi-chevron-right"></i>
+            </button>
+        </div>
+    `;
+}
+
+function renderAuditTableRows(participants) {
+    const body = document.getElementById('auditTableBody');
+    const act = currentActivityMeta || {};
+
+    if (participants.length === 0) {
+        body.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">No student volunteers match the current search/filter.</td></tr>`;
+        return;
+    }
+
+    body.innerHTML = participants.map(p => {
+        const hasIn = Boolean(p.formatted_time_in || p.time_in);
+        const hasOut = Boolean(p.formatted_time_out || p.time_out);
+        const rendered = parseFloat(p.hours_rendered || 0);
+        const target = parseFloat(p.target_hours || act.estimated_hours || 0);
+        
+        const isEligible = p.is_eligible;
+        const isEarlyOut = p.is_early_out;
+
+        const formatTime = (iso) => {
+            if (!iso) return null;
+            const d = new Date(iso);
+            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+        };
+
+        let statusCell = '';
+
+        if (isEligible) {
+            statusCell = `
+                <div class="text-center">
+                    <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1">
+                        <i class="bi bi-patch-check-fill me-1"></i>Automatically Issued
+                    </span>
+                    <small class="d-block text-muted font-monospace mt-1" style="font-size: 0.68rem;">${p.certificate_no || ''}</small>
+                </div>
+            `;
+        } else if (isEarlyOut || p.early_out_reason) {
+            statusCell = `
+                <div class="text-center">
+                    <span class="badge bg-warning bg-opacity-10 text-warning-emphasis border border-warning border-opacity-25 px-2 py-1">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i>Ineligible (Early Out)
+                    </span>
+                </div>
+            `;
+        } else if (hasIn && !hasOut) {
+            statusCell = `
+                <div class="text-center">
+                    <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-2 py-1">
+                        <i class="bi bi-clock-history me-1"></i>In Progress
+                    </span>
+                </div>
+            `;
+        } else {
+            statusCell = `
+                <div class="text-center">
+                    <span class="badge bg-secondary bg-opacity-10 text-secondary border px-2 py-1">
+                        <i class="bi bi-dash-circle me-1"></i>Pending Log
+                    </span>
+                </div>
+            `;
+        }
+
+        return `
+            <tr>
+                <td>
+                    <strong class="text-dark d-block">${p.full_name}</strong>
+                    <small class="text-muted">${p.course || 'BSIT'} • ${p.email} (ID: ${p.student_id || 'N/A'})</small>
+                </td>
+                <td>
+                    <small class="d-block text-success fw-semibold">In: ${hasIn ? formatTime(p.formatted_time_in || p.time_in) : '--:--'}</small>
+                    <small class="d-block text-info fw-semibold">Out: ${hasOut ? formatTime(p.formatted_time_out || p.time_out) : '--:--'}</small>
+                </td>
+                <td>
+                    <span class="badge ${isEligible ? 'bg-success' : 'bg-warning text-dark'} px-2 py-1">
+                        ${rendered.toFixed(2)} / ${target.toFixed(2)} hrs
+                    </span>
+                </td>
+                <td>
+                    ${p.early_out_reason ? `
+                        <div class="alert alert-warning py-1 px-2 mb-0" style="font-size: 0.75rem; max-width: 240px;">
+                            <i class="bi bi-exclamation-circle-fill me-1 text-warning-emphasis"></i>
+                            <strong>Reason:</strong> ${p.early_out_reason}
+                        </div>
+                    ` : '<span class="text-muted small">None (Full Hours Completed)</span>'}
+                </td>
+                <td class="text-center">${statusCell}</td>
+            </tr>
+        `;
+    }).join('');
 }
 
 function showAlert(type, msg) {

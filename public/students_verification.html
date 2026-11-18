@@ -58,9 +58,28 @@
                     <h3 class="fw-bold mb-1 text-dark">Student Account Verification</h3>
                     <p class="text-muted small mb-0">Inspect registered student records and School ID / COR attachments before granting portal access.</p>
                 </div>
-                <div class="input-group" style="max-width: 280px;">
-                    <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
-                    <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Search name, ID, or course..." onkeyup="filterTables()">
+                <div class="d-flex flex-wrap gap-2">
+                    <select id="studentCourseFilter" class="form-select form-select-sm" style="width: 170px;" onchange="applyStudentFilters()">
+                        <option value="ALL">All Courses</option>
+                        <option value="BSIT">BSIT</option>
+                        <option value="BSCS">BSCS</option>
+                        <option value="BSBA">BSBA</option>
+                        <option value="BEEd">BEEd</option>
+                        <option value="BSEd">BSEd</option>
+                        <option value="BSCrim">BSCrim</option>
+                        <option value="BSHM">BSHM</option>
+                        <option value="BSMT">BSMT</option>
+                        <option value="BSMarE">BSMarE</option>
+                        <option value="BSN">BSN</option>
+                        <option value="Midwifery">Midwifery</option>
+                        <option value="BS MedTech">BS MedTech</option>
+                        <option value="BSPsych">BSPsych</option>
+                        <option value="Juris Doctor">Juris Doctor</option>
+                    </select>
+                    <div class="input-group input-group-sm" style="width: 260px;">
+                        <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+                        <input type="text" id="searchInput" class="form-control" placeholder="Search name, ID, or email..." oninput="applyStudentFilters()">
+                    </div>
                 </div>
             </div>
 
@@ -91,6 +110,7 @@
                         </tbody>
                     </table>
                 </div>
+                <div id="pendingPagination" class="d-flex flex-wrap justify-content-between align-items-center pt-3 mt-3 border-top gap-2"></div>
             </div>
 
             <!-- Verified Students Card -->
@@ -117,6 +137,7 @@
                         </tbody>
                     </table>
                 </div>
+                <div id="verifiedPagination" class="d-flex flex-wrap justify-content-between align-items-center pt-3 mt-3 border-top gap-2"></div>
             </div>
         </main>
     </div>
@@ -165,9 +186,7 @@
                     </div>
 
                     <h6 class="fw-bold text-dark mb-2"><i class="bi bi-file-earmark-check me-1 text-primary"></i>Uploaded School ID / COR Proof</h6>
-                    <div id="detDocViewer" class="border rounded-3 p-3 bg-white text-center">
-                        <!-- Image or PDF injected here -->
-                    </div>
+                    <div id="detDocViewer" class="border rounded-3 p-3 bg-white text-center"></div>
                 </div>
             </div>
             <div class="modal-footer bg-light" id="modalActionFooter">
@@ -181,6 +200,11 @@
 <script>
 let allPending = [];
 let allVerified = [];
+let filteredPending = [];
+let filteredVerified = [];
+let pendingPage = 1;
+let verifiedPage = 1;
+const PAGE_SIZE = 10;
 let detailsModal;
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -201,19 +225,90 @@ async function loadStudents() {
 
         allPending = data.pendingStudents || [];
         allVerified = data.verifiedStudents || [];
-        renderTables(allPending, allVerified);
+        applyStudentFilters();
     } catch (err) {
         console.error('Load students error:', err);
     }
 }
 
-function renderTables(pendingList, verifiedList) {
-    document.getElementById('pendingCountBadge').textContent = `${pendingList.length} Pending`;
-    document.getElementById('verifiedCountBadge').textContent = `${verifiedList.length} Verified`;
+function applyStudentFilters() {
+    const q = (document.getElementById('searchInput')?.value || '').toLowerCase().trim();
+    const courseFilter = document.getElementById('studentCourseFilter')?.value || 'ALL';
 
+    const filterFn = s => {
+        const matchesQuery = !q ||
+            (s.full_name || '').toLowerCase().includes(q) ||
+            (s.student_id || '').toLowerCase().includes(q) ||
+            (s.course || '').toLowerCase().includes(q) ||
+            (s.email || '').toLowerCase().includes(q);
+        const matchesCourse = courseFilter === 'ALL' || (s.course || '') === courseFilter;
+        return matchesQuery && matchesCourse;
+    };
+
+    filteredPending = allPending.filter(filterFn);
+    filteredVerified = allVerified.filter(filterFn);
+    pendingPage = 1;
+    verifiedPage = 1;
+    renderAllPages();
+}
+
+function goToPendingPage(page) {
+    const totalPages = Math.max(1, Math.ceil(filteredPending.length / PAGE_SIZE));
+    pendingPage = Math.min(Math.max(1, page), totalPages);
+    renderAllPages();
+}
+
+function goToVerifiedPage(page) {
+    const totalPages = Math.max(1, Math.ceil(filteredVerified.length / PAGE_SIZE));
+    verifiedPage = Math.min(Math.max(1, page), totalPages);
+    renderAllPages();
+}
+
+function renderAllPages() {
+    document.getElementById('pendingCountBadge').textContent = `${filteredPending.length} Pending`;
+    document.getElementById('verifiedCountBadge').textContent = `${filteredVerified.length} Verified`;
+
+    const pTotal = filteredPending.length;
+    const pTotalPages = Math.max(1, Math.ceil(pTotal / PAGE_SIZE));
+    if (pendingPage > pTotalPages) pendingPage = pTotalPages;
+    const pStart = (pendingPage - 1) * PAGE_SIZE;
+    const pItems = filteredPending.slice(pStart, pStart + PAGE_SIZE);
+
+    const vTotal = filteredVerified.length;
+    const vTotalPages = Math.max(1, Math.ceil(vTotal / PAGE_SIZE));
+    if (verifiedPage > vTotalPages) verifiedPage = vTotalPages;
+    const vStart = (verifiedPage - 1) * PAGE_SIZE;
+    const vItems = filteredVerified.slice(vStart, vStart + PAGE_SIZE);
+
+    renderTables(pItems, vItems);
+    renderPager('pendingPagination', pTotal, pStart, pItems.length, pendingPage, pTotalPages, 'goToPendingPage');
+    renderPager('verifiedPagination', vTotal, vStart, vItems.length, verifiedPage, vTotalPages, 'goToVerifiedPage');
+}
+
+function renderPager(elId, total, startIdx, count, page, totalPages, fnName) {
+    const el = document.getElementById(elId);
+    if (total === 0) {
+        el.innerHTML = `<small class="text-muted">Showing 0 records</small>`;
+        return;
+    }
+    el.innerHTML = `
+        <small class="text-muted">Showing <strong>${startIdx + 1}–${startIdx + count}</strong> of <strong>${total}</strong> students</small>
+        <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-secondary" onclick="${fnName}(${page - 1})" ${page <= 1 ? 'disabled' : ''}>
+                <i class="bi bi-chevron-left"></i> Prev
+            </button>
+            <span class="btn btn-light border disabled text-dark fw-semibold">Page ${page} of ${totalPages}</span>
+            <button class="btn btn-outline-secondary" onclick="${fnName}(${page + 1})" ${page >= totalPages ? 'disabled' : ''}>
+                Next <i class="bi bi-chevron-right"></i>
+            </button>
+        </div>
+    `;
+}
+
+function renderTables(pendingList, verifiedList) {
     const pendingBody = document.getElementById('pendingTableBody');
     if (pendingList.length === 0) {
-        pendingBody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-muted">No pending student registrations.</td></tr>`;
+        pendingBody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-muted">No pending student registrations match the current filter.</td></tr>`;
     } else {
         pendingBody.innerHTML = pendingList.map(s => `
             <tr>
@@ -243,7 +338,7 @@ function renderTables(pendingList, verifiedList) {
 
     const verifiedBody = document.getElementById('verifiedTableBody');
     if (verifiedList.length === 0) {
-        verifiedBody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-muted">No verified students found.</td></tr>`;
+        verifiedBody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-muted">No verified students match the current filter.</td></tr>`;
     } else {
         verifiedBody.innerHTML = verifiedList.map(s => `
             <tr>
@@ -313,7 +408,6 @@ async function viewStudentDetails(userId) {
             viewer.innerHTML = `<p class="text-muted small py-4 mb-0"><i class="bi bi-file-earmark-x fs-3 d-block mb-1"></i>No School ID or COR attachment uploaded for this account.</p>`;
         }
 
-        // Render Approve/Reject buttons inside modal if Pending
         const footer = document.getElementById('modalActionFooter');
         if (st.verification_status === 'Pending') {
             footer.innerHTML = `
@@ -361,17 +455,6 @@ async function verifyStudent(user_id, action, closeModal = false) {
     } catch (err) {
         console.error('Verify error:', err);
     }
-}
-
-function filterTables() {
-    const q = document.getElementById('searchInput').value.toLowerCase();
-    const filterFn = s => 
-        (s.full_name || '').toLowerCase().includes(q) ||
-        (s.student_id || '').toLowerCase().includes(q) ||
-        (s.course || '').toLowerCase().includes(q) ||
-        (s.email || '').toLowerCase().includes(q);
-
-    renderTables(allPending.filter(filterFn), allVerified.filter(filterFn));
 }
 
 document.getElementById('logoutBtn').addEventListener('click', () => {
