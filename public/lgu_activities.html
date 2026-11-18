@@ -88,37 +88,43 @@
 
             <!-- Status Filter Tabs + Search & Course Filter Toolbar -->
             <div class="cn-card p-3 mb-4">
-                <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
-                    <ul class="nav nav-pills gap-1">
+                <!-- Row 1: Status Pills -->
+                <div class="pb-3 mb-3 border-bottom">
+                    <ul class="nav nav-pills flex-wrap gap-2">
                         <li class="nav-item">
-                            <button class="nav-link active bg-warning text-dark py-1 px-3 fw-semibold small" id="tabPending" onclick="switchTab('Pending')">
+                            <button class="nav-link active bg-warning text-dark py-1 px-3 fw-semibold small text-nowrap" id="tabPending" onclick="switchTab('Pending')">
                                 <i class="bi bi-hourglass-split me-1"></i>Pending Review
                             </button>
                         </li>
                         <li class="nav-item">
-                            <button class="nav-link text-secondary py-1 px-3 fw-semibold small" id="tabApproved" onclick="switchTab('Approved')">
+                            <button class="nav-link text-secondary py-1 px-3 fw-semibold small text-nowrap" id="tabApproved" onclick="switchTab('Approved')">
                                 <i class="bi bi-check-circle-fill me-1"></i>Approved Activities
                             </button>
                         </li>
                         <li class="nav-item">
-                            <button class="nav-link text-secondary py-1 px-3 fw-semibold small" id="tabRejected" onclick="switchTab('Rejected')">
+                            <button class="nav-link text-secondary py-1 px-3 fw-semibold small text-nowrap" id="tabRejected" onclick="switchTab('Rejected')">
                                 <i class="bi bi-x-circle-fill me-1"></i>Rejected Proposals
                             </button>
                         </li>
                         <li class="nav-item">
-                            <button class="nav-link text-secondary py-1 px-3 fw-semibold small" id="tabAll" onclick="switchTab('All')">
-                                All Activities
+                            <button class="nav-link text-secondary py-1 px-3 fw-semibold small text-nowrap" id="tabAll" onclick="switchTab('All')">
+                                <i class="bi bi-grid-fill me-1"></i>All Activities
                             </button>
                         </li>
                     </ul>
+                </div>
 
-                    <div class="d-flex flex-wrap gap-2">
-                        <div class="input-group input-group-sm" style="width: 240px;">
-                            <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
-                            <input type="text" id="lguActivitySearch" class="form-control" placeholder="Search title, unit, or venue..." oninput="applyLguActivityFilters()">
+                <!-- Row 2: Search Input, Course Dropdown & Reset -->
+                <div class="row g-2 align-items-center">
+                    <div class="col-12 col-md-6 col-lg-7">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-muted"></i></span>
+                            <input type="text" id="lguActivitySearch" class="form-control border-start-0" placeholder="Search activity title, proponent unit, or venue..." oninput="applyLguActivityFilters()">
                         </div>
-                        <select id="lguCourseFilter" class="form-select form-select-sm" style="width: 170px;" onchange="applyLguActivityFilters()">
-                            <option value="ALL">All Courses</option>
+                    </div>
+                    <div class="col-8 col-md-4 col-lg-3">
+                        <select id="lguCourseFilter" class="form-select form-select-sm" onchange="applyLguActivityFilters()">
+                            <option value="ALL">Filter: All Courses</option>
                             <option value="All Courses">Open to All Courses</option>
                             <option value="BSIT">BSIT</option>
                             <option value="BSCS">BSCS</option>
@@ -135,6 +141,11 @@
                             <option value="BSPsych">BSPsych</option>
                             <option value="Juris Doctor">Juris Doctor</option>
                         </select>
+                    </div>
+                    <div class="col-4 col-md-2 col-lg-2 text-end">
+                        <button type="button" class="btn btn-sm btn-outline-secondary w-100 fw-semibold" onclick="resetLguActivityFilters()">
+                            <i class="bi bi-arrow-counterclockwise me-1"></i>Reset
+                        </button>
                     </div>
                 </div>
             </div>
@@ -471,6 +482,12 @@ async function loadLguActivities(status = 'Pending') {
         console.error('Error fetching activities:', err);
         body.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-4">No activity records found.</td></tr>`;
     }
+}
+
+function resetLguActivityFilters() {
+    document.getElementById('lguActivitySearch').value = '';
+    document.getElementById('lguCourseFilter').value = 'ALL';
+    applyLguActivityFilters();
 }
 
 function applyLguActivityFilters() {
