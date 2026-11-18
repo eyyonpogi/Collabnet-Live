@@ -140,6 +140,9 @@
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/assets/js/modal-alert.js"></script>
+
 <script>
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20 MB
 let processedDocBase64 = null;
@@ -279,8 +282,15 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
     const data = await res.json();
 
     if (res.ok) {
-      alert(data.message || 'Registration submitted! Awaiting admin verification.');
-      window.location.href = '/index.html';
+      const successMsg = data.message || 'Registration submitted! Awaiting admin verification.';
+      if (typeof window.showPopupModal === 'function') {
+        window.showPopupModal(successMsg, () => {
+          window.location.href = '/index.html';
+        });
+      } else {
+        alert(successMsg);
+        window.location.href = '/index.html';
+      }
     } else {
       showError(data.error || data.message || 'Registration failed.');
     }
