@@ -78,7 +78,7 @@
                     <h3 class="fw-bold mb-1 text-dark">LGU Vinzons Sub-Offices & Barangays</h3>
                     <p class="text-muted small mb-0">Manage internal municipal departments, sector offices, and barangay units.</p>
                 </div>
-                <button class="btn btn-primary btn-sm fw-bold px-3 py-2 shadow-sm" data-bs-toggle="modal" data-bs-target="#addDeptModal">
+                <button class="btn btn-primary btn-sm fw-bold px-3 py-2 shadow-sm" onclick="openDeptModal()">
                     <i class="bi bi-plus-lg me-1"></i> Add Office / Barangay
                 </button>
             </div>
@@ -96,10 +96,11 @@
                                 <th>CATEGORY</th>
                                 <th>POINT OF CONTACT</th>
                                 <th>EMAIL ADDRESS</th>
+                                <th class="text-end">ACTIONS</th>
                             </tr>
                         </thead>
                         <tbody id="departmentsTableBody">
-                            <tr><td colspan="4" class="text-center text-muted py-3">Loading sub-departments...</td></tr>
+                            <tr><td colspan="5" class="text-center text-muted py-3">Loading sub-departments...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -108,15 +109,16 @@
     </div>
 </div>
 
-<!-- Modal: Add Department / Barangay -->
+<!-- Modal: Add / Edit Department / Barangay -->
 <div class="modal fade" id="addDeptModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg">
             <form id="addDeptForm">
+                <input type="hidden" id="editDeptId">
                 <div class="modal-header border-bottom-0 pb-0">
                     <div class="d-flex align-items-center gap-2">
                         <i class="bi bi-diagram-3 text-primary fs-4"></i>
-                        <h5 class="modal-title fw-bold text-dark">Add LGU Sub-Unit</h5>
+                        <h5 id="deptModalTitle" class="modal-title fw-bold text-dark">Add LGU Sub-Unit</h5>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
@@ -146,7 +148,7 @@
                 </div>
                 <div class="modal-footer border-top-0 pt-0">
                     <button type="button" class="btn btn-sm btn-secondary fw-semibold" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-sm btn-primary fw-bold px-3">Save Sub-Unit</button>
+                    <button type="submit" id="saveDeptBtn" class="btn btn-sm btn-primary fw-bold px-3">Save Sub-Unit</button>
                 </div>
             </form>
         </div>
@@ -155,6 +157,8 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+let loadedDepartments = [];
+
 async function loadDepartments() {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -177,26 +181,38 @@ async function loadDepartments() {
         const data = await res.json();
         if (!data.success) return;
 
+        loadedDepartments = data.departments || [];
         const body = document.getElementById('departmentsTableBody');
-        if (!data.departments || data.departments.length === 0) {
-            body.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-4">No sub-departments or barangays added yet.</td></tr>`;
+        if (loadedDepartments.length === 0) {
+            body.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">No sub-departments or barangays added yet.</td></tr>`;
             return;
         }
 
-        body.innerHTML = data.departments.map(d => {
-            const isBarangay = d.office_type === 'Barangay';
-            const badgeClass = 'bg-info bg-opacity-10 text-info border border-info border-opacity-25';
+        body.innerHTML = loadedDepartments.map(d => {
+            const category = d.office_type || 'Department';
+            const badgeClass = category === 'Barangay'
+                ? 'bg-success bg-opacity-10 text-success border border-success border-opacity-25'
+                : category === 'Office'
+                    ? 'bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25'
+                    : 'bg-info bg-opacity-10 text-info border border-info border-opacity-25';
 
             return `
                 <tr>
                     <td class="fw-bold text-dark">${d.dept_name}</td>
                     <td>
                         <span class="badge ${badgeClass} px-2 py-1" style="font-weight: 500;">
-                            ${d.office_type || 'Department'}
+                            ${category}
                         </span>
                     </td>
-                    <td class="text-secondary">${d.contact_person || 'N/A'}</td>
-                    <td class="text-secondary">${d.contact_email || 'N/A'}</td>
+                    <td class="${d.contact_person ? 'text-dark fw-medium' : 'text-muted'}">${d.contact_person || 'N/A'}</td>
+                    <td class="${d.contact_email ? 'text-primary' : 'text-muted'}">
+                        ${d.contact_email ? `<a href="mailto:${d.contact_email}" class="text-decoration-none">${d.contact_email}</a>` : 'N/A'}
+                    </td>
+                    <td class="text-end">
+                        <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2 fw-semibold" style="font-size: 0.75rem;" onclick="openDeptModal(${d.dept_id})">
+                            <i class="bi bi-pencil-square me-1"></i>Edit
+                        </button>
+                    </td>
                 </tr>
             `;
         }).join('');
@@ -205,20 +221,50 @@ async function loadDepartments() {
     }
 }
 
+function openDeptModal(deptId = null) {
+    const form = document.getElementById('addDeptForm');
+    form.reset();
+
+    if (deptId) {
+        const dept = loadedDepartments.find(d => d.dept_id === deptId);
+        if (!dept) return;
+        document.getElementById('editDeptId').value = dept.dept_id;
+        document.getElementById('deptModalTitle').textContent = 'Edit LGU Sub-Unit';
+        document.getElementById('deptName').value = dept.dept_name || '';
+        document.getElementById('officeType').value = dept.office_type || 'Department';
+        document.getElementById('contactPerson').value = dept.contact_person || '';
+        document.getElementById('contactEmail').value = dept.contact_email || '';
+    } else {
+        document.getElementById('editDeptId').value = '';
+        document.getElementById('deptModalTitle').textContent = 'Add LGU Sub-Unit';
+    }
+
+    const modal = new bootstrap.Modal(document.getElementById('addDeptModal'));
+    modal.show();
+}
+
 document.getElementById('addDeptForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const token = localStorage.getItem('token');
+    const saveBtn = document.getElementById('saveDeptBtn');
+    const editId = document.getElementById('editDeptId').value;
 
     const payload = {
-        dept_name: document.getElementById('deptName').value,
+        dept_name: document.getElementById('deptName').value.trim(),
         office_type: document.getElementById('officeType').value,
-        contact_person: document.getElementById('contactPerson').value,
-        contact_email: document.getElementById('contactEmail').value
+        contact_person: document.getElementById('contactPerson').value.trim(),
+        contact_email: document.getElementById('contactEmail').value.trim()
     };
 
+    const url = editId ? `/api/lgu/departments/${editId}` : '/api/lgu/departments';
+    const method = editId ? 'PUT' : 'POST';
+
     try {
-        const res = await fetch('/api/lgu/departments', {
-            method: 'POST',
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+
+        const res = await fetch(url, {
+            method,
             headers: { 
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
@@ -233,14 +279,17 @@ document.getElementById('addDeptForm').addEventListener('submit', async (e) => {
         if (modal) modal.hide();
 
         if (res.ok) {
-            showAlert('success', data.message || 'Office/Barangay added successfully!');
+            showAlert('success', data.message || 'Office/Barangay saved successfully!');
             document.getElementById('addDeptForm').reset();
             loadDepartments();
         } else {
-            showAlert('danger', data.error || data.message || 'Failed to add office/barangay.');
+            showAlert('danger', data.error || data.message || 'Failed to save office/barangay.');
         }
     } catch (err) {
         console.error('Save department error:', err);
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Sub-Unit';
     }
 });
 

@@ -352,15 +352,23 @@ router.post('/attendance/pins', async (req, res) => {
   }
 });
 
-// --- 6. PROPONENT LGU SUB-DEPARTMENT / BARANGAY DROPDOWN FETCH ---
+// --- 6. PROPONENT LGU SUB-DEPARTMENT / BARANGAY FETCH ---
 router.get('/departments', async (req, res) => {
   try {
-    const query = "SELECT dept_id, dept_name, office_type FROM lgu_departments ORDER BY office_type ASC, dept_name ASC";
+    const query = `
+      SELECT dept_id, dept_name, office_type, contact_person, contact_email
+      FROM lgu_departments
+      ORDER BY office_type ASC, dept_name ASC
+    `;
     const { rows } = await pool.query(query);
 
     const formattedDepartments = rows.map(dept => ({
       dept_id: dept.dept_id,
-      dept_name: `${dept.dept_name} (${dept.office_type})`
+      dept_name: dept.dept_name,
+      display_name: `${dept.dept_name} (${dept.office_type || 'Department'})`,
+      office_type: dept.office_type || 'Department',
+      contact_person: dept.contact_person || null,
+      contact_email: dept.contact_email || null
     }));
 
     res.json({ success: true, departments: formattedDepartments });
@@ -374,7 +382,7 @@ router.get('/departments', async (req, res) => {
 router.post('/departments', async (req, res) => {
   const { dept_name, office_type, contact_person, contact_email } = req.body;
 
-  if (!dept_name) {
+  if (!dept_name || !dept_name.trim()) {
     return res.status(400).json({ error: 'Department or Barangay name is required.' });
   }
 
@@ -382,7 +390,7 @@ router.post('/departments', async (req, res) => {
     const insertQuery = `
       INSERT INTO lgu_departments (dept_name, office_type, contact_person, contact_email)
       VALUES ($1, $2, $3, $4)
-      RETURNING dept_id
+      RETURNING dept_id, dept_name, office_type, contact_person, contact_email
     `;
     const values = [
       dept_name.trim(),
@@ -392,10 +400,50 @@ router.post('/departments', async (req, res) => {
     ];
 
     const { rows } = await pool.query(insertQuery, values);
-    res.json({ success: true, message: 'Office/Barangay added successfully!', dept_id: rows[0].dept_id });
+    res.json({
+      success: true,
+      message: 'Office/Barangay added successfully!',
+      dept_id: rows[0].dept_id,
+      department: rows[0]
+    });
   } catch (err) {
     console.error('Create Department Error:', err);
     res.status(500).json({ error: 'Failed to add office/barangay unit.' });
+  }
+});
+
+// --- 8. UPDATE EXISTING LGU DEPARTMENT / BARANGAY ---
+router.put('/departments/:deptId', async (req, res) => {
+  const deptId = parseInt(req.params.deptId, 10);
+  const { dept_name, office_type, contact_person, contact_email } = req.body;
+
+  if (!deptId || !dept_name || !dept_name.trim()) {
+    return res.status(400).json({ error: 'Valid Department ID and name are required.' });
+  }
+
+  try {
+    const result = await pool.query(
+      `UPDATE lgu_departments
+       SET dept_name = $1, office_type = $2, contact_person = $3, contact_email = $4
+       WHERE dept_id = $5
+       RETURNING dept_id`,
+      [
+        dept_name.trim(),
+        office_type || 'Department',
+        contact_person ? contact_person.trim() : null,
+        contact_email ? contact_email.trim() : null,
+        deptId
+      ]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Sub-unit not found.' });
+    }
+
+    res.json({ success: true, message: 'Office/Barangay details updated successfully!' });
+  } catch (err) {
+    console.error('Update Department Error:', err);
+    res.status(500).json({ error: 'Failed to update office/barangay unit.' });
   }
 });
 
